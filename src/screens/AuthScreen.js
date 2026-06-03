@@ -1,0 +1,152 @@
+import React, { useState } from 'react';
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  KeyboardAvoidingView, Platform, ScrollView, Alert
+} from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useStore } from '../store/useStore';
+import { COLORS } from '../utils/theme';
+
+export default function AuthScreen() {
+  const [mode, setMode] = useState('login'); // login | register
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const { login, register } = useStore();
+
+  const handleSubmit = async () => {
+    if (!email || !password) return Alert.alert('Completa los campos');
+    if (mode === 'register' && !name) return Alert.alert('Ingresa tu nombre');
+    setLoading(true);
+    const result = mode === 'login'
+      ? await login(email.trim().toLowerCase(), password)
+      : await register(name.trim(), email.trim().toLowerCase(), password);
+    setLoading(false);
+    if (result.error) Alert.alert('Error', result.error);
+  };
+
+  return (
+    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <LinearGradient colors={['#0A0A0F', '#0D0D1A', '#12102A']} style={styles.bg}>
+        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+
+          <View style={styles.logoArea}>
+            <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.logoCircle}>
+              <Ionicons name="star" size={32} color="#fff" />
+            </LinearGradient>
+            <Text style={styles.appName}>Vida Plena</Text>
+            <Text style={styles.appSub}>Tu guía de crecimiento personal</Text>
+          </View>
+
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>{mode === 'login' ? 'Bienvenido de vuelta' : 'Crear cuenta'}</Text>
+            <Text style={styles.cardSub}>{mode === 'login' ? 'Ingresa a tu espacio personal' : 'Empieza tu transformación hoy'}</Text>
+
+            {mode === 'register' && (
+              <View style={styles.inputWrap}>
+                <Ionicons name="person-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
+                <TextInput
+                  placeholder="Tu nombre"
+                  placeholderTextColor={COLORS.textMuted}
+                  style={styles.input}
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                />
+              </View>
+            )}
+
+            <View style={styles.inputWrap}>
+              <Ionicons name="mail-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
+              <TextInput
+                placeholder="Correo electrónico"
+                placeholderTextColor={COLORS.textMuted}
+                style={styles.input}
+                value={email}
+                onChangeText={setEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+              />
+            </View>
+
+            <View style={styles.inputWrap}>
+              <Ionicons name="lock-closed-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
+              <TextInput
+                placeholder="Contraseña"
+                placeholderTextColor={COLORS.textMuted}
+                style={[styles.input, { flex: 1 }]}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPass}
+              />
+              <TouchableOpacity onPress={() => setShowPass(!showPass)} style={{ padding: 4 }}>
+                <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity onPress={handleSubmit} activeOpacity={0.8} style={{ marginTop: 8 }}>
+              <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.btn}>
+                {loading
+                  ? <Text style={styles.btnText}>Cargando...</Text>
+                  : <Text style={styles.btnText}>{mode === 'login' ? 'Entrar' : 'Crear mi cuenta'}</Text>
+                }
+              </LinearGradient>
+            </TouchableOpacity>
+
+            <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'register' : 'login')} style={styles.switchRow}>
+              <Text style={styles.switchText}>
+                {mode === 'login' ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+                <Text style={{ color: COLORS.purpleLight, fontWeight: '600' }}>
+                  {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}
+                </Text>
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.features}>
+            {[
+              { icon: 'trending-up-outline', text: 'Seguimiento de hábitos diarios' },
+              { icon: 'bar-chart-outline', text: 'Gráficas de progreso real' },
+              { icon: 'notifications-outline', text: 'Recordatorios personalizados' },
+              { icon: 'wallet-outline', text: 'Control financiero completo' },
+            ].map((f, i) => (
+              <View key={i} style={styles.featureRow}>
+                <View style={styles.featureIcon}>
+                  <Ionicons name={f.icon} size={16} color={COLORS.purpleLight} />
+                </View>
+                <Text style={styles.featureText}>{f.text}</Text>
+              </View>
+            ))}
+          </View>
+
+        </ScrollView>
+      </LinearGradient>
+    </KeyboardAvoidingView>
+  );
+}
+
+const styles = StyleSheet.create({
+  bg: { flex: 1 },
+  container: { padding: 24, paddingTop: 60 },
+  logoArea: { alignItems: 'center', marginBottom: 32 },
+  logoCircle: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  appName: { fontSize: 28, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
+  appSub: { fontSize: 14, color: COLORS.textSub, marginTop: 4 },
+  card: { backgroundColor: COLORS.card, borderRadius: 20, padding: 20, borderWidth: 0.5, borderColor: COLORS.cardBorder, marginBottom: 24 },
+  cardTitle: { fontSize: 20, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
+  cardSub: { fontSize: 13, color: COLORS.textSub, marginBottom: 20 },
+  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bg3, borderRadius: 12, paddingHorizontal: 14, marginBottom: 12, borderWidth: 0.5, borderColor: COLORS.border },
+  inputIcon: { marginRight: 10 },
+  input: { flex: 1, height: 48, color: COLORS.text, fontSize: 15 },
+  btn: { borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  switchRow: { marginTop: 16, alignItems: 'center' },
+  switchText: { fontSize: 14, color: COLORS.textSub },
+  features: { gap: 12 },
+  featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  featureIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: COLORS.purpleDim, alignItems: 'center', justifyContent: 'center' },
+  featureText: { fontSize: 14, color: COLORS.textSub },
+});

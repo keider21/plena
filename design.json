@@ -1,0 +1,82 @@
+{
+  "app": {
+    "name": "Vida Plena",
+    "concept": "Sistema operativo personal de vida",
+    "style": "Oscuro moderno tipo fintech",
+    "mode": "dark",
+    "accent": "#7C3AED",
+    "language": "es",
+    "currencyPrimary": "PEN (S/)",
+    "currencySecondary": "USD ($)"
+  },
+  "colors": {
+    "background": { "bg": "#0A0A0F", "bg2": "#12121A", "bg3": "#1A1A26" },
+    "surface": { "card": "#16161F", "cardBorder": "#252535", "border": "#1E1E2E" },
+    "brand": { "purple": "#7C3AED", "purpleLight": "#A78BFA", "purpleDim": "#2D1B69" },
+    "semantic": {
+      "green": "#10B981", "greenDim": "#064E3B",
+      "blue": "#0EA5E9", "blueDim": "#0C4A6E",
+      "amber": "#F59E0B", "amberDim": "#78350F",
+      "pink": "#EC4899", "pinkDim": "#831843",
+      "red": "#EF4444", "redDim": "#7F1D1D",
+      "indigo": "#6366F1"
+    },
+    "text": { "primary": "#F1F0FF", "sub": "#8B8AA8", "muted": "#4A4A6A", "white": "#FFFFFF" }
+  },
+  "categoryColors": {
+    "habitos": { "salud": "#10B981", "mente": "#0EA5E9", "finanzas": "#F59E0B", "familia": "#EC4899", "empresa": "#7C3AED" },
+    "metas": {
+      "personal": "#7C3AED", "familia": "#EC4899", "finanzas": "#10B981",
+      "empresa": "#F59E0B", "salud": "#0EA5E9", "aprendizaje": "#6366F1", "materiales": "#A78BFA"
+    }
+  },
+  "typography": {
+    "fontFamily": "System",
+    "weights": { "regular": "400", "medium": "500", "semibold": "600", "bold": "700", "black": "800" },
+    "scale": {
+      "heroTitle": { "size": 24, "weight": "800" },
+      "screenTitle": { "size": 20, "weight": "700" },
+      "sectionTitle": { "size": 15, "weight": "700" },
+      "body": { "size": 14, "weight": "400" },
+      "label": { "size": 13, "weight": "600", "color": "sub" },
+      "caption": { "size": 12, "color": "sub" },
+      "mini": { "size": 11, "color": "muted" }
+    }
+  },
+  "radii": { "chip": 20, "input": 12, "button": 14, "card": 16, "iconBox": 12, "sheet": 24, "fab": 28 },
+  "spacing": {
+    "screenPadding": 16,
+    "cardPadding": 16,
+    "gapSmall": 8,
+    "gapMedium": 12,
+    "gapLarge": 16,
+    "headerTopPadding": 56,
+    "sectionTopPadding": 22
+  },
+  "shadows": {
+    "sm": { "color": "#7C3AED", "offset": [0, 2], "opacity": 0.15, "radius": 8, "elevation": 4 },
+    "md": { "color": "#7C3AED", "offset": [0, 4], "opacity": 0.2, "radius": 16, "elevation": 8 }
+  },
+  "gradients": {
+    "hero": ["#1A0A3E", "#0D0D1A"],
+    "onboarding": ["#0A0A0F", "#0D0D1A", "#12102A"],
+    "primaryButton": ["#7C3AED", "#6D28D9"]
+  },
+  "components": {
+    "hero": { "gradient": "hero", "paddingTop": 56, "borderBottomRadius": 28 },
+    "card": { "bg": "card", "border": "cardBorder", "borderWidth": 0.5, "radius": 16, "padding": 16 },
+    "button": { "bg": "purple", "radius": 14, "paddingV": 15, "textColor": "white", "weight": "700" },
+    "chip": { "bg": "card", "selectedBg": "purple", "radius": 20, "paddingH": 14, "paddingV": 8 },
+    "input": { "bg": "card", "border": "cardBorder", "radius": 12, "padding": 12, "textColor": "primary" },
+    "toggle": { "trackOff": "bg3", "trackOn": "purple", "knob": "white", "width": 46, "height": 28 },
+    "fab": { "bg": "purple", "size": 56, "radius": 28, "position": "bottom-right", "shadow": "md" },
+    "modalSheet": { "bg": "bg2", "topRadius": 24, "backdrop": "#000000AA", "anchor": "bottom" },
+    "tabBar": { "bg": "bg2", "height": 62, "activeColor": "purpleLight", "inactiveColor": "muted", "activePillBg": "purpleDim" },
+    "emptyState": { "iconBoxBg": "purpleDim", "iconColor": "purpleLight", "centered": true }
+  },
+  "navigation": {
+    "type": "bottomTabs + stack",
+    "tabs": ["Inicio", "Plan", "Habitos", "Metas", "Finanzas", "Crecer"],
+    "stackScreens": ["Profile", "PlanningWizard", "Calendar", "GoalAssistant", "GoalDetail"]
+  }
+}

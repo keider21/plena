@@ -1,0 +1,512 @@
+import { create } from 'zustand';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { format, subDays } from 'date-fns';
+
+const today = () => format(new Date(), 'yyyy-MM-dd');
+
+const generateLast30Days = () => {
+  const days = {};
+  for (let i = 29; i >= 0; i--) {
+    days[format(subDays(new Date(), i), 'yyyy-MM-dd')] = null;
+  }
+  return days;
+};
+
+// REGLA: todo arranca vacío. El usuario crea sus propios datos.
+const DEFAULT_HABITS = [];
+const DEFAULT_GOALS = [];
+
+const DEFAULT_SETTINGS = {
+  currency: 'PEN',          // moneda principal: Soles
+  secondaryCurrency: 'USD', // moneda secundaria: Dólares
+};
+
+// Actividades sugeridas para encajar en el día (el usuario elige y edita)
+export const SUGGESTED_ACTIVITIES = [
+  { id: 'ingles', name: 'Inglés', icon: 'language-outline', color: '#0EA5E9', minutesPerDay: 30, preferred: 'noche', enabled: false },
+  { id: 'ejercicio', name: 'Ejercicio', icon: 'barbell-outline', color: '#10B981', minutesPerDay: 45, preferred: 'manana', enabled: false },
+  { id: 'familia', name: 'Familia', icon: 'heart-outline', color: '#EC4899', minutesPerDay: 60, preferred: 'noche', enabled: false },
+  { id: 'negocio', name: 'Desarrollo de negocio', icon: 'briefcase-outline', color: '#7C3AED', minutesPerDay: 60, preferred: 'tarde', enabled: false },
+  { id: 'contenido', name: 'Creación de contenido', icon: 'videocam-outline', color: '#F59E0B', minutesPerDay: 30, preferred: 'tarde', enabled: false },
+  { id: 'finanzas', name: 'Finanzas', icon: 'wallet-outline', color: '#10B981', minutesPerDay: 20, preferred: 'noche', enabled: false },
+  { id: 'lectura', name: 'Lectura', icon: 'book-outline', color: '#6366F1', minutesPerDay: 30, preferred: 'noche', enabled: false },
+  { id: 'meditacion', name: 'Meditación', icon: 'moon-outline', color: '#A78BFA', minutesPerDay: 15, preferred: 'manana', enabled: false },
+];
+
+const DEFAULT_PLANNING = {
+  schedule: null,        // se llena con el asistente
+  activities: SUGGESTED_ACTIVITIES,
+  log: {},               // { 'yyyy-MM-dd': { activityId: { status, pct } } }
+};
+
+export const useStore = create((set, get) => ({
+  // Auth
+  currentUser: null,
+  users: [],
+
+  // User data (todo vacío al inicio)
+  habits: DEFAULT_HABITS,
+  habitLogs: {},
+  goals: DEFAULT_GOALS,
+  finances: [],
+  onboardingDone: false,
+  userProfile: {},
+
+  // Ajustes + planificación
+  settings: DEFAULT_SETTINGS,
+  planning: DEFAULT_PLANNING,
+  calendar: { events: [], objectives: [] },
+  finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [] },
+  areas: [], // árbol: [{ id, name, parentId, color, icon, linkedGoalId, linkedHabitId }]
+
+  // UI
+  loading: false,
+
+  // ─── AUTH ────────────────────────────────────────────────
+  register: async (name, email, password) => {
+    const { users } = get();
+    if (users.find(u => u.email === email)) return { error: 'El correo ya existe' };
+    const user = { id: Date.now().toString(), name, email, password, createdAt: today() };
+    const updated = [...users, user];
+    set({ users: updated, currentUser: user });
+    await AsyncStorage.setItem('users', JSON.stringify(updated));
+    await AsyncStorage.setItem('currentUser', JSON.stringify(user));
+    return { success: true };
+  },
+
+  login: async (email, password) => {
+    const { users } = get();
+    const user = users.find(u => u.email === email && u.password === password);
+    if (!user) return { error: 'Correo o contraseña incorrectos' };
+    set({ currentUser: user });
+    await AsyncStorage.setItem('currentUser', JSON.stringify(user));
+    return { success: true };
+  },
+
+  logout: async () => {
+    set({ currentUser: null, onboardingDone: false });
+    await AsyncStorage.removeItem('currentUser');
+  },
+
+  // ─── PERSISTENCE ─────────────────────────────────────────
+  loadFromStorage: async () => {
+    try {
+      const [
+        usersRaw, userRaw, logsRaw, habitsRaw, goalsRaw, finRaw,
+        profileRaw, onbRaw, settingsRaw, planningRaw, calendarRaw, financeRaw, areasRaw,
+      ] = await Promise.all([
+        AsyncStorage.getItem('users'),
+        AsyncStorage.getItem('currentUser'),
+        AsyncStorage.getItem('habitLogs'),
+        AsyncStorage.getItem('habits'),
+        AsyncStorage.getItem('goals'),
+        AsyncStorage.getItem('finances'),
+        AsyncStorage.getItem('userProfile'),
+        AsyncStorage.getItem('onboardingDone'),
+        AsyncStorage.getItem('settings'),
+        AsyncStorage.getItem('planning'),
+        AsyncStorage.getItem('calendar'),
+        AsyncStorage.getItem('finance'),
+        AsyncStorage.getItem('areas'),
+      ]);
+      const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [] };
+      const savedPlanning = planningRaw ? JSON.parse(planningRaw) : null;
+      set({
+        users: usersRaw ? JSON.parse(usersRaw) : [],
+        currentUser: userRaw ? JSON.parse(userRaw) : null,
+        habitLogs: logsRaw ? JSON.parse(logsRaw) : {},
+        habits: habitsRaw ? JSON.parse(habitsRaw) : DEFAULT_HABITS,
+        goals: goalsRaw ? JSON.parse(goalsRaw) : DEFAULT_GOALS,
+        finances: finRaw ? JSON.parse(finRaw) : [],
+        userProfile: profileRaw ? JSON.parse(profileRaw) : {},
+        onboardingDone: onbRaw === 'true',
+        settings: settingsRaw ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsRaw) } : DEFAULT_SETTINGS,
+        planning: savedPlanning
+          ? { schedule: savedPlanning.schedule || null, activities: savedPlanning.activities || SUGGESTED_ACTIVITIES, log: savedPlanning.log || {} }
+          : DEFAULT_PLANNING,
+        calendar: calendarRaw
+          ? { events: JSON.parse(calendarRaw).events || [], objectives: JSON.parse(calendarRaw).objectives || [] }
+          : { events: [], objectives: [] },
+        finance: financeRaw ? { ...emptyFinance, ...JSON.parse(financeRaw) } : emptyFinance,
+        areas: areasRaw ? JSON.parse(areasRaw) : [],
+      });
+    } catch (e) { console.log('Storage error', e); }
+  },
+
+  // ─── SETTINGS ────────────────────────────────────────────
+  setCurrency: async (code) => {
+    const settings = { ...get().settings, currency: code };
+    set({ settings });
+    await AsyncStorage.setItem('settings', JSON.stringify(settings));
+  },
+
+  // ─── PLANNING ────────────────────────────────────────────
+  savePlanning: async (planning) => {
+    const merged = { ...get().planning, ...planning };
+    set({ planning: merged });
+    await AsyncStorage.setItem('planning', JSON.stringify(merged));
+  },
+
+  // Registra el cumplimiento de una actividad en un día
+  logActivity: async (dateStr, activityId, data) => {
+    const planning = get().planning;
+    const log = { ...(planning.log || {}) };
+    log[dateStr] = { ...(log[dateStr] || {}), [activityId]: data };
+    const merged = { ...planning, log };
+    set({ planning: merged });
+    await AsyncStorage.setItem('planning', JSON.stringify(merged));
+  },
+
+  clearActivityLog: async (dateStr, activityId) => {
+    const planning = get().planning;
+    const log = { ...(planning.log || {}) };
+    if (log[dateStr]) { const d = { ...log[dateStr] }; delete d[activityId]; log[dateStr] = d; }
+    const merged = { ...planning, log };
+    set({ planning: merged });
+    await AsyncStorage.setItem('planning', JSON.stringify(merged));
+  },
+
+  savePlanningSchedule: async (schedule) => {
+    const planning = { ...get().planning, schedule };
+    set({ planning });
+    await AsyncStorage.setItem('planning', JSON.stringify(planning));
+  },
+
+  savePlanningActivities: async (activities) => {
+    const planning = { ...get().planning, activities };
+    set({ planning });
+    await AsyncStorage.setItem('planning', JSON.stringify(planning));
+  },
+
+  // ─── CALENDAR ────────────────────────────────────────────
+  _saveCalendar: async (calendar) => {
+    set({ calendar });
+    await AsyncStorage.setItem('calendar', JSON.stringify(calendar));
+  },
+
+  addEvent: async (event) => {
+    const cal = get().calendar;
+    const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+    const calendar = { ...cal, events: [...cal.events, { id, done: false, ...event }] };
+    await get()._saveCalendar(calendar);
+  },
+
+  updateEvent: async (id, patch) => {
+    const cal = get().calendar;
+    const calendar = { ...cal, events: cal.events.map(e => e.id === id ? { ...e, ...patch } : e) };
+    await get()._saveCalendar(calendar);
+  },
+
+  deleteEvent: async (id) => {
+    const cal = get().calendar;
+    const calendar = { ...cal, events: cal.events.filter(e => e.id !== id) };
+    await get()._saveCalendar(calendar);
+  },
+
+  toggleEvent: async (id) => {
+    const cal = get().calendar;
+    const calendar = { ...cal, events: cal.events.map(e => e.id === id ? { ...e, done: !e.done } : e) };
+    await get()._saveCalendar(calendar);
+  },
+
+  addObjective: async ({ period, key, title }) => {
+    const cal = get().calendar;
+    const id = Date.now().toString() + Math.random().toString(36).slice(2, 6);
+    const calendar = { ...cal, objectives: [...cal.objectives, { id, period, key, title, done: false }] };
+    await get()._saveCalendar(calendar);
+  },
+
+  toggleObjective: async (id) => {
+    const cal = get().calendar;
+    const calendar = { ...cal, objectives: cal.objectives.map(o => o.id === id ? { ...o, done: !o.done } : o) };
+    await get()._saveCalendar(calendar);
+  },
+
+  deleteObjective: async (id) => {
+    const cal = get().calendar;
+    const calendar = { ...cal, objectives: cal.objectives.filter(o => o.id !== id) };
+    await get()._saveCalendar(calendar);
+  },
+
+  // ─── HABITS / GOALS / PROFILE (persistencia) ─────────────
+  saveHabits: async (habits) => {
+    set({ habits });
+    await AsyncStorage.setItem('habits', JSON.stringify(habits));
+  },
+
+  saveGoals: async (goals) => {
+    set({ goals });
+    await AsyncStorage.setItem('goals', JSON.stringify(goals));
+  },
+
+  saveProfile: async (profile) => {
+    set({ userProfile: profile, onboardingDone: true });
+    await AsyncStorage.setItem('userProfile', JSON.stringify(profile));
+    await AsyncStorage.setItem('onboardingDone', 'true');
+  },
+
+  // ─── HABITS ──────────────────────────────────────────────
+  logHabit: async (habitId, status) => {
+    const { habitLogs } = get();
+    const d = today();
+    const updated = {
+      ...habitLogs,
+      [habitId]: { ...(habitLogs[habitId] || generateLast30Days()), [d]: status },
+    };
+    set({ habitLogs: updated });
+    await AsyncStorage.setItem('habitLogs', JSON.stringify(updated));
+  },
+
+  getHabitStreak: (habitId) => {
+    const { habitLogs } = get();
+    const logs = habitLogs[habitId] || {};
+    let streak = 0;
+    let i = 0;
+    while (true) {
+      const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
+      if (logs[d] === 'done') { streak++; i++; }
+      else break;
+    }
+    return streak;
+  },
+
+  getHabitCompletionRate: (habitId, days = 7) => {
+    const { habitLogs } = get();
+    const logs = habitLogs[habitId] || {};
+    let done = 0, total = 0;
+    for (let i = 0; i < days; i++) {
+      const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
+      if (logs[d] !== null && logs[d] !== undefined) total++;
+      if (logs[d] === 'done') done++;
+    }
+    return total === 0 ? 0 : Math.round((done / total) * 100);
+  },
+
+  getHabitChartData: (habitId, days = 14) => {
+    const { habitLogs } = get();
+    const logs = habitLogs[habitId] || {};
+    const data = [];
+    for (let i = days - 1; i >= 0; i--) {
+      const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
+      data.push({ date: d, value: logs[d] === 'done' ? 1 : 0, status: logs[d] });
+    }
+    return data;
+  },
+
+  getTodayStats: () => {
+    const { habits, habitLogs } = get();
+    const d = today();
+    const active = habits.filter(h => h.active);
+    const done = active.filter(h => habitLogs[h.id]?.[d] === 'done').length;
+    const missed = active.filter(h => habitLogs[h.id]?.[d] === 'missed').length;
+    return { total: active.length, done, missed, pending: active.length - done - missed };
+  },
+
+  getWeeklyScore: () => {
+    const { habits, habitLogs } = get();
+    const active = habits.filter(h => h.active);
+    let scores = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = format(subDays(new Date(), i), 'yyyy-MM-dd');
+      const done = active.filter(h => habitLogs[h.id]?.[d] === 'done').length;
+      scores.push(active.length > 0 ? Math.round((done / active.length) * 100) : 0);
+    }
+    return scores;
+  },
+
+  // ─── FINANCES ────────────────────────────────────────────
+  addFinance: async (entry) => {
+    const { finances } = get();
+    const updated = [{ ...entry, id: Date.now().toString(), date: today() }, ...finances];
+    set({ finances: updated });
+    await AsyncStorage.setItem('finances', JSON.stringify(updated));
+  },
+
+  deleteFinance: async (id) => {
+    const { finances } = get();
+    const updated = finances.filter(f => f.id !== id);
+    set({ finances: updated });
+    await AsyncStorage.setItem('finances', JSON.stringify(updated));
+  },
+
+  getMonthlyStats: () => {
+    const txs = get().finance.transactions || [];
+    const month = format(new Date(), 'yyyy-MM');
+    const monthly = txs.filter(t => (t.date || '').startsWith(month));
+    const ingresos = monthly.filter(t => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
+    const gastos = monthly.filter(t => t.type === 'gasto').reduce((a, t) => a + t.amount, 0);
+    return { ingresos, gastos, balance: ingresos - gastos, ahorro: Math.max(0, ingresos - gastos) };
+  },
+
+  updateGoalProgress: async (goalId, newCurrent) => {
+    const { goals } = get();
+    const updated = goals.map(g => g.id === goalId ? { ...g, current: newCurrent } : g);
+    set({ goals: updated });
+    await AsyncStorage.setItem('goals', JSON.stringify(updated));
+  },
+
+  // ─── METAS (modelo con contexto) ─────────────────────────
+  addGoal: async (goal) => {
+    const id = goal.id || (Date.now().toString() + Math.random().toString(36).slice(2, 6));
+    const g = { createdAt: today(), ...goal, id };
+    const goals = [g, ...get().goals];
+    set({ goals });
+    await AsyncStorage.setItem('goals', JSON.stringify(goals));
+    return g;
+  },
+
+  updateGoal: async (id, patch) => {
+    const goals = get().goals.map(g => g.id === id ? { ...g, ...patch } : g);
+    set({ goals });
+    await AsyncStorage.setItem('goals', JSON.stringify(goals));
+  },
+
+  deleteGoal: async (id) => {
+    const goals = get().goals.filter(g => g.id !== id);
+    set({ goals });
+    await AsyncStorage.setItem('goals', JSON.stringify(goals));
+  },
+
+  // ─── FINANZAS (cuentas, tarjetas, préstamos, deudas) ─────
+  _saveFinance: async (finance) => {
+    set({ finance });
+    await AsyncStorage.setItem('finance', JSON.stringify(finance));
+  },
+  _fid: () => Date.now().toString() + Math.random().toString(36).slice(2, 6),
+
+  addAccount: async (acc) => {
+    const f = get().finance;
+    const a = { id: get()._fid(), balance: 0, currency: get().settings.currency, ...acc };
+    await get()._saveFinance({ ...f, accounts: [...f.accounts, a] });
+  },
+  updateAccount: async (id, patch) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, accounts: f.accounts.map(a => a.id === id ? { ...a, ...patch } : a) });
+  },
+  deleteAccount: async (id) => {
+    const f = get().finance;
+    await get()._saveFinance({
+      ...f,
+      accounts: f.accounts.filter(a => a.id !== id),
+      transactions: f.transactions.filter(t => t.accountId !== id && t.toAccountId !== id),
+    });
+  },
+
+  addTransaction: async (tx) => {
+    const f = get().finance;
+    const t = { id: get()._fid(), date: today(), ...tx };
+    const accounts = f.accounts.map(a => {
+      if (a.id === t.accountId) {
+        const delta = t.type === 'ingreso' ? t.amount : -t.amount;
+        return { ...a, balance: (a.balance || 0) + delta };
+      }
+      if (t.type === 'transferencia' && a.id === t.toAccountId) {
+        return { ...a, balance: (a.balance || 0) + t.amount };
+      }
+      return a;
+    });
+    // Gasto con tarjeta de crédito → aumenta lo utilizado
+    const cards = t.cardId
+      ? f.cards.map(c => c.id === t.cardId ? { ...c, used: (c.used || 0) + t.amount } : c)
+      : f.cards;
+    await get()._saveFinance({ ...f, accounts, cards, transactions: [t, ...f.transactions] });
+  },
+  deleteTransaction: async (id) => {
+    const f = get().finance;
+    const t = f.transactions.find(x => x.id === id);
+    if (!t) return;
+    const accounts = f.accounts.map(a => {
+      if (a.id === t.accountId) {
+        const delta = t.type === 'ingreso' ? -t.amount : t.amount;
+        return { ...a, balance: (a.balance || 0) + delta };
+      }
+      if (t.type === 'transferencia' && a.id === t.toAccountId) {
+        return { ...a, balance: (a.balance || 0) - t.amount };
+      }
+      return a;
+    });
+    const cards = t.cardId
+      ? f.cards.map(c => c.id === t.cardId ? { ...c, used: Math.max(0, (c.used || 0) - t.amount) } : c)
+      : f.cards;
+    await get()._saveFinance({ ...f, accounts, cards, transactions: f.transactions.filter(x => x.id !== id) });
+  },
+
+  addCard: async (card) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, cards: [...f.cards, { id: get()._fid(), currency: get().settings.currency, ...card }] });
+  },
+  updateCard: async (id, patch) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, cards: f.cards.map(c => c.id === id ? { ...c, ...patch } : c) });
+  },
+  deleteCard: async (id) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, cards: f.cards.filter(c => c.id !== id) });
+  },
+
+  addLoan: async (loan) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, loans: [...f.loans, { id: get()._fid(), currency: get().settings.currency, ...loan }] });
+  },
+  updateLoan: async (id, patch) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, loans: f.loans.map(l => l.id === id ? { ...l, ...patch } : l) });
+  },
+  deleteLoan: async (id) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, loans: f.loans.filter(l => l.id !== id) });
+  },
+
+  addDebt: async (debt) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, debts: [...f.debts, { id: get()._fid(), paid: 0, currency: get().settings.currency, ...debt }] });
+  },
+  updateDebt: async (id, patch) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, debts: f.debts.map(d => d.id === id ? { ...d, ...patch } : d) });
+  },
+  deleteDebt: async (id) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, debts: f.debts.filter(d => d.id !== id) });
+  },
+
+  // ─── ÁREAS (árbol de vida) ───────────────────────────────
+  addArea: async ({ parentId = null, name, color, icon }) => {
+    const node = {
+      id: get()._fid(), name: (name || 'Área').trim(), parentId: parentId || null,
+      color: color || '#7C3AED', icon: icon || 'ellipse', createdAt: today(),
+    };
+    const areas = [...get().areas, node];
+    set({ areas });
+    await AsyncStorage.setItem('areas', JSON.stringify(areas));
+    return node;
+  },
+  updateArea: async (id, patch) => {
+    const areas = get().areas.map(a => a.id === id ? { ...a, ...patch } : a);
+    set({ areas });
+    await AsyncStorage.setItem('areas', JSON.stringify(areas));
+  },
+  deleteArea: async (id) => {
+    const all = get().areas;
+    const toDelete = new Set([id]);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const a of all) {
+        if (a.parentId && toDelete.has(a.parentId) && !toDelete.has(a.id)) { toDelete.add(a.id); changed = true; }
+      }
+    }
+    const areas = all.filter(a => !toDelete.has(a.id));
+    set({ areas });
+    await AsyncStorage.setItem('areas', JSON.stringify(areas));
+  },
+
+  // Crear un hábito (usado al convertir un nodo del árbol)
+  addHabit: async (habit) => {
+    const h = { id: get()._fid(), active: true, ...habit };
+    const habits = [...get().habits, h];
+    set({ habits });
+    await AsyncStorage.setItem('habits', JSON.stringify(habits));
+    return h;
+  },
+}));
