@@ -395,19 +395,24 @@ export const useStore = create((set, get) => ({
   addTransaction: async (tx) => {
     const f = get().finance;
     const t = { id: get()._fid(), date: today(), ...tx };
+    const amt = t.amount || 0;
     const accounts = f.accounts.map(a => {
       if (a.id === t.accountId) {
-        const delta = t.type === 'ingreso' ? t.amount : -t.amount;
-        return { ...a, balance: (a.balance || 0) + delta };
+        // ingreso suma; gasto/transferencia/pago restan de la cuenta origen
+        return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? amt : -amt) };
       }
       if (t.type === 'transferencia' && a.id === t.toAccountId) {
-        return { ...a, balance: (a.balance || 0) + t.amount };
+        return { ...a, balance: (a.balance || 0) + amt };
       }
       return a;
     });
-    // Gasto con tarjeta de crédito → aumenta lo utilizado
     const cards = t.cardId
-      ? f.cards.map(c => c.id === t.cardId ? { ...c, used: (c.used || 0) + t.amount } : c)
+      ? f.cards.map(c => {
+          if (c.id !== t.cardId) return c;
+          if (t.type === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - amt) };       // pago a tarjeta
+          if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) - amt };              // gasto con débito
+          return { ...c, used: (c.used || 0) + amt };                                             // gasto con crédito
+        })
       : f.cards;
     await get()._saveFinance({ ...f, accounts, cards, transactions: [t, ...f.transactions] });
   },
@@ -415,18 +420,23 @@ export const useStore = create((set, get) => ({
     const f = get().finance;
     const t = f.transactions.find(x => x.id === id);
     if (!t) return;
+    const amt = t.amount || 0;
     const accounts = f.accounts.map(a => {
       if (a.id === t.accountId) {
-        const delta = t.type === 'ingreso' ? -t.amount : t.amount;
-        return { ...a, balance: (a.balance || 0) + delta };
+        return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? -amt : amt) };
       }
       if (t.type === 'transferencia' && a.id === t.toAccountId) {
-        return { ...a, balance: (a.balance || 0) - t.amount };
+        return { ...a, balance: (a.balance || 0) - amt };
       }
       return a;
     });
     const cards = t.cardId
-      ? f.cards.map(c => c.id === t.cardId ? { ...c, used: Math.max(0, (c.used || 0) - t.amount) } : c)
+      ? f.cards.map(c => {
+          if (c.id !== t.cardId) return c;
+          if (t.type === 'pago') return { ...c, used: (c.used || 0) + amt };
+          if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) + amt };
+          return { ...c, used: Math.max(0, (c.used || 0) - amt) };
+        })
       : f.cards;
     await get()._saveFinance({ ...f, accounts, cards, transactions: f.transactions.filter(x => x.id !== id) });
   },

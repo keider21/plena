@@ -7,9 +7,9 @@ import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import EmptyState from '../components/EmptyState';
 import LineChart from '../components/LineChart';
-import { snooze } from '../utils/notifications';
+import { snooze, rescheduleAll } from '../utils/notifications';
 import {
-  WEEKDAYS, buildDayTable, suggestPlacements, toTime, toMin, minutesToLabel,
+  WEEKDAYS, buildDayTable, suggestPlacements, toTime, toMin, minutesToLabel, placementsByDay,
 } from '../utils/timeOrganizer';
 
 const fmtClock = (sec) => {
@@ -27,7 +27,7 @@ const statusLabel = (e) => {
 };
 
 export default function PlanningScreen({ navigation }) {
-  const { planning, logActivity, savePlanningSchedule } = useStore();
+  const { planning, logActivity, savePlanningActivities } = useStore();
   const schedule = planning.schedule;
   const activities = planning.activities || [];
   const log = planning.log || {};
@@ -135,10 +135,20 @@ export default function PlanningScreen({ navigation }) {
   };
   const posponer = () => snooze(currentSeg?.label || 'Actividad', 'Recordatorio pospuesto', 5);
   const openGap = (seg) => { setGapName(''); setGap(seg); };
-  const fillGap = async (name, color) => {
+  const fillGap = async (name, color, icon) => {
     if (!gap || !name || !name.trim()) return;
-    const block = { id: 'gap_' + Date.now(), name: name.trim(), start: toTime(gap.start), end: toTime(gap.end), days: [day], icon: 'flash-outline', color: color || COLORS.purple };
-    await savePlanningSchedule({ ...schedule, customBlocks: [...(schedule.customBlocks || []), block] });
+    const dur = Math.max(5, Math.round(gap.end - gap.start));
+    const act = {
+      id: 'gap_' + Date.now(), name: name.trim(), icon: icon || 'flash-outline', color: color || COLORS.purple,
+      mode: 'manual', start: toTime(gap.start), end: toTime(gap.end), days: [day], enabled: true, custom: true,
+      minutesPerDay: dur, preferred: 'cualquiera',
+    };
+    const acts = [...(planning.activities || []), act];
+    await savePlanningActivities(acts);
+    try {
+      const habits = useStore.getState().habits;
+      await rescheduleAll({ habits, schedule, activities: acts, placementsByDay: placementsByDay(schedule, acts) });
+    } catch (e) { /* noop */ }
     setGap(null); setGapName('');
   };
 
@@ -285,7 +295,7 @@ export default function PlanningScreen({ navigation }) {
             <Text style={styles.gapSub}>Usa una de tus actividades:</Text>
             <View style={styles.gapChips}>
               {activities.map((a) => (
-                <TouchableOpacity key={a.id} style={[styles.gapChip, { borderColor: a.color }]} onPress={() => fillGap(a.name, a.color)}>
+                <TouchableOpacity key={a.id} style={[styles.gapChip, { borderColor: a.color }]} onPress={() => fillGap(a.name, a.color, a.icon)}>
                   <Ionicons name={a.icon} size={14} color={a.color} />
                   <Text style={styles.gapChipText}>{a.name}</Text>
                 </TouchableOpacity>

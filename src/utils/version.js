@@ -1,7 +1,21 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.02';
+export const APP_VERSION = '0.03';
 
 export const CHANGELOG = [
+  {
+    v: '0.03',
+    fecha: '2026-06-04',
+    cambios: [
+      'Familia unificada (se quitó el "Tiempo en familia" duplicado)',
+      'Cada actividad puede ser Automática o de Hora fija (editas inicio, fin y días)',
+      'Lista de actividades simplificada: solo 3 sugeridas + desplegable para agregar más',
+      'Se eliminó "Compromisos fijos" (ahora todo son actividades/eventos editables)',
+      'Llenar huecos ahora funciona siempre, incluso con una actividad en curso',
+      'Tarjetas de débito con saldo: registran gasto/categoría e impactan balance y gráficos',
+      'Nuevo tipo "Pago de tarjeta" (reduce lo utilizado de tu crédito)',
+      'Botón flotante en Inicio para registrar gasto/ingreso/transferencia/pago al instante',
+    ],
+  },
   {
     v: '0.02',
     fecha: '2026-06-04',

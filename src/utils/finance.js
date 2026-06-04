@@ -35,6 +35,7 @@ export const TX_TYPES = [
   { key: 'ingreso', label: 'Ingreso', icon: 'arrow-down-circle-outline', color: '#10B981' },
   { key: 'gasto', label: 'Gasto', icon: 'arrow-up-circle-outline', color: '#EF4444' },
   { key: 'transferencia', label: 'Transferencia', icon: 'swap-horizontal-outline', color: '#0EA5E9' },
+  { key: 'pago', label: 'Pago tarjeta', icon: 'card-outline', color: '#A78BFA' },
 ];
 
 export const CATEGORIES = {
@@ -104,8 +105,9 @@ export function loanPending(loan) {
 
 export function netWorth(finance) {
   const accounts = (finance.accounts || []).reduce((a, x) => a + (x.balance || 0), 0);
+  const debitBal = (finance.cards || []).filter((c) => c.kind === 'debito').reduce((a, c) => a + (c.balance || 0), 0);
+  const creditUsed = (finance.cards || []).filter((c) => c.kind !== 'debito').reduce((a, c) => a + (c.used || 0), 0);
   const debts = (finance.debts || []).reduce((a, x) => a + Math.max(0, (x.amount || 0) - (x.paid || 0)), 0);
-  const cards = (finance.cards || []).reduce((a, x) => a + (x.used || 0), 0);
   const loans = (finance.loans || []).reduce((a, x) => a + loanPending(x), 0);
-  return accounts - debts - cards - loans;
+  return accounts + debitBal - creditUsed - debts - loans;
 }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -49,7 +49,7 @@ function Field({ label, children }) {
   return <View style={{ marginBottom: 14 }}><Text style={styles.fLabel}>{label}</Text>{children}</View>;
 }
 
-export default function FinanzasScreen({ navigation }) {
+export default function FinanzasScreen({ navigation, route }) {
   const store = useStore();
   const { finance, settings } = store;
   const cur = settings.currency;
@@ -67,8 +67,8 @@ export default function FinanzasScreen({ navigation }) {
     }
     const defaults = {
       account: { name: '', type: 'yape', currency: cur, balance: '' },
-      movement: { type: 'gasto', accountId: finance.accounts[0]?.id, toAccountId: finance.accounts[1]?.id, amount: '', category: 'Otros', note: '' },
-      card: { kind: 'credito', bank: '', currency: cur, limit: '', used: '', cycleStartDay: '', cutoffDay: '', payDay: '', minPayment: '', totalPayment: '', interest: '' },
+      movement: { type: 'gasto', accountId: finance.accounts[0]?.id, toAccountId: finance.accounts[1]?.id, cardId: finance.cards.find((c) => c.kind !== 'debito')?.id, amount: '', category: 'Otros', note: '' },
+      card: { kind: 'credito', bank: '', currency: cur, balance: '', limit: '', used: '', cycleStartDay: '', cutoffDay: '', payDay: '', minPayment: '', totalPayment: '', interest: '' },
       loan: { name: '', lenderType: 'banco', currency: cur, installment: '', installmentsTotal: '', installmentsPaid: '', interest: '', startDate: '', endDate: '' },
       debt: { name: '', creditor: '', currency: cur, amount: '', paid: '', priority: 'media', dueDate: '' },
     };
@@ -77,6 +77,20 @@ export default function FinanzasScreen({ navigation }) {
   };
   const close = () => { setModal(null); setF({}); };
 
+  // Abrir el modal de movimiento desde el botón rápido de Inicio
+  useEffect(() => {
+    const q = route?.params?.quickAdd;
+    if (!q) return;
+    navigation.setParams({ quickAdd: undefined });
+    if (finance.accounts.length === 0) {
+      Alert.alert('Primero crea una cuenta', 'Necesitas al menos una cuenta para registrar movimientos.');
+      return;
+    }
+    setTab('resumen');
+    openModal('movement');
+    if (q !== 'movement') setF((prev) => ({ ...prev, type: q }));
+  }, [route?.params?.quickAdd]);
+
   const save = async () => {
     const id = modal.id;
     if (modal.type === 'account') {
@@ -84,16 +98,23 @@ export default function FinanzasScreen({ navigation }) {
       id ? await store.updateAccount(id, p) : await store.addAccount(p);
     } else if (modal.type === 'movement') {
       if (num(f.amount) <= 0) return;
-      const isCard = f.type === 'gasto' && finance.cards.some((c) => c.id === f.accountId);
-      await store.addTransaction({
-        type: f.type,
-        accountId: isCard ? undefined : f.accountId,
-        cardId: isCard ? f.accountId : undefined,
-        toAccountId: f.type === 'transferencia' ? f.toAccountId : undefined,
-        amount: num(f.amount), category: f.type === 'transferencia' ? null : f.category, note: f.note?.trim() || '',
-      });
+      if (f.type === 'pago') {
+        if (!f.accountId || !f.cardId) return;
+        await store.addTransaction({ type: 'pago', accountId: f.accountId, cardId: f.cardId, amount: num(f.amount), category: null, note: f.note?.trim() || '' });
+      } else {
+        const isCard = f.type === 'gasto' && finance.cards.some((c) => c.id === f.accountId);
+        await store.addTransaction({
+          type: f.type,
+          accountId: isCard ? undefined : f.accountId,
+          cardId: isCard ? f.accountId : undefined,
+          toAccountId: f.type === 'transferencia' ? f.toAccountId : undefined,
+          amount: num(f.amount),
+          category: (f.type === 'ingreso' || f.type === 'gasto') ? f.category : null,
+          note: f.note?.trim() || '',
+        });
+      }
     } else if (modal.type === 'card') {
-      const p = { kind: f.kind || 'credito', bank: f.bank?.trim() || 'Tarjeta', currency: f.currency, limit: num(f.limit), used: num(f.used), cycleStartDay: num(f.cycleStartDay), cutoffDay: num(f.cutoffDay), payDay: num(f.payDay), minPayment: num(f.minPayment), totalPayment: num(f.totalPayment), interest: num(f.interest) };
+      const p = { kind: f.kind || 'credito', bank: f.bank?.trim() || 'Tarjeta', currency: f.currency, balance: num(f.balance), limit: num(f.limit), used: num(f.used), cycleStartDay: num(f.cycleStartDay), cutoffDay: num(f.cutoffDay), payDay: num(f.payDay), minPayment: num(f.minPayment), totalPayment: num(f.totalPayment), interest: num(f.interest) };
       id ? await store.updateCard(id, p) : await store.addCard(p);
     } else if (modal.type === 'loan') {
       const p = { name: f.name?.trim() || 'Préstamo', lenderType: f.lenderType, currency: f.currency, installment: num(f.installment), installmentsTotal: num(f.installmentsTotal), installmentsPaid: num(f.installmentsPaid), interest: num(f.interest), startDate: f.startDate, endDate: f.endDate };
@@ -177,8 +198,8 @@ export default function FinanzasScreen({ navigation }) {
               )}
               {modal?.type === 'movement' && (
                 <>
-                  <Field label="Tipo"><Chips options={TX_TYPES} value={f.type} onChange={(v) => set('type', v)} /></Field>
-                  <Field label={f.type === 'transferencia' ? 'Desde' : (f.type === 'gasto' ? 'Pagar con' : 'Cuenta')}>
+                  <Field label="Tipo"><Dropdown options={TX_TYPES} value={f.type} onChange={(v) => set('type', v)} /></Field>
+                  <Field label={f.type === 'transferencia' ? 'Desde' : f.type === 'pago' ? 'Pagar desde' : f.type === 'gasto' ? 'Pagar con' : 'Cuenta'}>
                     <Chips
                       options={[
                         ...finance.accounts.map((a) => ({ key: a.id, label: a.name })),
@@ -190,6 +211,11 @@ export default function FinanzasScreen({ navigation }) {
                   </Field>
                   {f.type === 'transferencia' && (
                     <Field label="Hacia"><Chips options={finance.accounts.map((a) => ({ key: a.id, label: a.name }))} value={f.toAccountId} onChange={(v) => set('toAccountId', v)} /></Field>
+                  )}
+                  {f.type === 'pago' && (
+                    <Field label="Tarjeta a pagar">
+                      <Dropdown options={finance.cards.filter((c) => c.kind !== 'debito').map((c) => ({ key: c.id, label: c.bank }))} value={f.cardId} onChange={(v) => set('cardId', v)} placeholder="Elige tarjeta de crédito" />
+                    </Field>
                   )}
                   <Field label="Monto"><TextInput style={styles.input} value={String(f.amount)} onChangeText={(v) => set('amount', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
                   {(() => {
@@ -204,7 +230,7 @@ export default function FinanzasScreen({ navigation }) {
                       </View>
                     );
                   })()}
-                  {f.type !== 'transferencia' && (
+                  {(f.type === 'ingreso' || f.type === 'gasto') && (
                     <Field label="Categoría">
                       <Dropdown options={(CATEGORIES[f.type] || CATEGORIES.gasto).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
                     </Field>
@@ -236,6 +262,9 @@ export default function FinanzasScreen({ navigation }) {
                         <Half label="Pago total"><TextInput style={styles.input} value={String(f.totalPayment)} onChangeText={(v) => set('totalPayment', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
                       </Row>
                     </>
+                  )}
+                  {f.kind === 'debito' && (
+                    <Field label="Saldo actual"><TextInput style={styles.input} value={String(f.balance)} onChangeText={(v) => set('balance', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
                   )}
                 </>
               )}
@@ -423,7 +452,7 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar }) {
                 </TouchableOpacity>
               </>
             ) : (
-              <Text style={styles.debitoNote}>Tarjeta de débito · paga directo de tu saldo</Text>
+              <Text style={styles.debitoNote}>Saldo: {formatMoney(c.balance, c.currency)}</Text>
             )}
           </TouchableOpacity>
         );

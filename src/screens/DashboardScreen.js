@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
@@ -38,7 +38,18 @@ export default function DashboardScreen({ navigation }) {
   const avgWeekly = weekly.length > 0 ? Math.round(weekly.reduce((a, b) => a + b, 0) / weekly.length) : 0;
   const maxWeekBar = 80;
 
+  const [quickMenu, setQuickMenu] = useState(false);
+  const QUICK = [
+    { q: 'gasto', label: 'Agregar gasto', icon: 'arrow-up-circle-outline', color: COLORS.red },
+    { q: 'ingreso', label: 'Agregar ingreso', icon: 'arrow-down-circle-outline', color: COLORS.green },
+    { q: 'transferencia', label: 'Transferencia', icon: 'swap-horizontal-outline', color: COLORS.blue },
+    { q: 'pago', label: 'Pago de tarjeta', icon: 'card-outline', color: COLORS.purpleLight },
+    { q: 'movement', label: 'Movimiento financiero', icon: 'cash-outline', color: COLORS.amber },
+  ];
+  const goFinance = (q) => { setQuickMenu(false); navigation.navigate('Finanzas', { quickAdd: q }); };
+
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={styles.bg} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
       <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
@@ -183,8 +194,28 @@ export default function DashboardScreen({ navigation }) {
         </View>
       </View>
 
-      <View style={{ height: 24 }} />
+      <View style={{ height: 90 }} />
     </ScrollView>
+
+      <TouchableOpacity style={styles.fab} onPress={() => setQuickMenu(true)} activeOpacity={0.85}>
+        <Ionicons name="add" size={28} color="#fff" />
+      </TouchableOpacity>
+
+      <Modal visible={quickMenu} transparent animationType="fade" onRequestClose={() => setQuickMenu(false)}>
+        <TouchableOpacity style={styles.qBackdrop} activeOpacity={1} onPress={() => setQuickMenu(false)}>
+          <View style={styles.qSheet}>
+            <Text style={styles.qTitle}>Registrar movimiento</Text>
+            {QUICK.map((o) => (
+              <TouchableOpacity key={o.q} style={styles.qItem} onPress={() => goFinance(o.q)}>
+                <View style={[styles.qIcon, { backgroundColor: o.color + '22' }]}><Ionicons name={o.icon} size={20} color={o.color} /></View>
+                <Text style={styles.qLabel}>{o.label}</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </View>
   );
 }
 
@@ -231,4 +262,15 @@ const styles = StyleSheet.create({
   finCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: COLORS.cardBorder, borderLeftWidth: 3 },
   finLabel: { fontSize: 11, color: COLORS.textSub, marginBottom: 4 },
   finVal: { fontSize: 16, fontWeight: '700' },
+  fab: {
+    position: 'absolute', right: 20, bottom: 22, width: 56, height: 56, borderRadius: 28,
+    backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#7C3AED', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+  },
+  qBackdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
+  qSheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, paddingBottom: 32 },
+  qTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, padding: 12 },
+  qItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13, paddingHorizontal: 12 },
+  qIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  qLabel: { flex: 1, fontSize: 15, color: COLORS.text, fontWeight: '500' },
 });

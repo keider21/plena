@@ -85,30 +85,6 @@ export function getBusyBlocks(schedule, weekday) {
     }
   });
 
-  if (schedule.familyBlock?.enabled && (schedule.familyBlock.days || []).includes(weekday)) {
-    blocks.push({
-      start: toMin(schedule.familyBlock.start),
-      end: toMin(schedule.familyBlock.end),
-      label: 'Tiempo en familia',
-      type: 'family',
-      icon: 'heart-outline',
-      color: '#EC4899',
-    });
-  }
-
-  (schedule.customBlocks || []).forEach((b) => {
-    if ((b.days || []).includes(weekday)) {
-      blocks.push({
-        start: toMin(b.start),
-        end: toMin(b.end),
-        label: b.name,
-        type: 'custom',
-        icon: b.icon || 'pin-outline',
-        color: b.color || '#6366F1',
-      });
-    }
-  });
-
   return blocks.filter((b) => b.end > b.start).sort((a, b) => a.start - b.start);
 }
 
@@ -144,46 +120,59 @@ export function getFreeBlocks(schedule, weekday) {
   return { free: cleaned, totalFree, awakeStart: wake, awakeEnd: sleep };
 }
 
-// Sugiere dónde colocar cada actividad dentro de los bloques libres
-export function suggestPlacements(schedule, weekday, activities) {
-  const { free } = getFreeBlocks(schedule, weekday);
-  // copia mutable de la capacidad libre de cada bloque
-  const slots = free.map((f) => ({ start: f.start, cursor: f.start, end: f.end }));
-  const placements = [];
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
 
-  const active = (activities || []).filter((a) => a.enabled !== false && a.minutesPerDay > 0);
-  // primero las de preferencia específica, luego "cualquiera"
-  const ordered = [...active].sort((a, b) => (a.preferred === 'cualquiera' ? 1 : 0) - (b.preferred === 'cualquiera' ? 1 : 0));
+// Actividades con hora MANUAL fijada por el usuario (start/end/days)
+function manualBlocks(activities, weekday) {
+  return (activities || [])
+    .filter((a) => a.enabled !== false && a.mode === 'manual' && a.start && a.end && (a.days || ALL_DAYS).includes(weekday))
+    .map((a) => ({ activityId: a.id, name: a.name, icon: a.icon, color: a.color, start: toMin(a.start), end: toMin(a.end) }))
+    .filter((b) => b.end > b.start);
+}
+
+// Sugiere dónde colocar cada actividad: las manuales van a su hora fija;
+// las automáticas se acomodan en los huecos libres alrededor de todo lo ocupado.
+export function suggestPlacements(schedule, weekday, activities) {
+  if (!schedule) return [];
+  const wake = toMin(schedule.wakeTime);
+  let sleep = toMin(schedule.sleepTime);
+  if (sleep <= wake) sleep += 1440;
+
+  const manual = manualBlocks(activities, weekday);
+  const placements = manual.map((b) => ({ ...b, placed: true, manual: true }));
+
+  // Bloques ocupados (trabajo, comidas) + actividades manuales → para calcular huecos
+  const occupied = mergeIntervals(
+    [...getBusyBlocks(schedule, weekday), ...manual].map((b) => ({
+      start: b.start < wake ? b.start + 1440 : b.start,
+      end: b.end <= b.start ? b.end + 1440 : (b.end < wake ? b.end + 1440 : b.end),
+    }))
+  );
+
+  const slots = [];
+  let cursor = wake;
+  for (const b of occupied) {
+    if (b.start > cursor) slots.push({ cursor, end: Math.min(b.start, sleep) });
+    cursor = Math.max(cursor, b.end);
+    if (cursor >= sleep) break;
+  }
+  if (cursor < sleep) slots.push({ cursor, end: sleep });
+
+  const auto = (activities || []).filter((a) => a.enabled !== false && a.mode !== 'manual' && a.minutesPerDay > 0);
+  const ordered = [...auto].sort((a, b) => (a.preferred === 'cualquiera' ? 1 : 0) - (b.preferred === 'cualquiera' ? 1 : 0));
 
   for (const act of ordered) {
     const pref = PREFERENCES.find((p) => p.value === act.preferred) || PREFERENCES[3];
-    // busca un slot con espacio que solape la preferencia
-    let slot = slots.find(
-      (s) => s.end - s.cursor >= act.minutesPerDay && s.cursor < pref.to && s.end > pref.from
-    );
-    if (!slot) slot = slots.find((s) => s.end - s.cursor >= act.minutesPerDay); // fallback
+    let slot = slots.find((s) => s.end - s.cursor >= act.minutesPerDay && s.cursor < pref.to && s.end > pref.from);
+    if (!slot) slot = slots.find((s) => s.end - s.cursor >= act.minutesPerDay);
     if (slot) {
       const start = Math.max(slot.cursor, Math.min(pref.from, slot.end - act.minutesPerDay));
       const realStart = Math.max(slot.cursor, start);
       const end = realStart + act.minutesPerDay;
-      placements.push({
-        activityId: act.id,
-        name: act.name,
-        icon: act.icon,
-        color: act.color,
-        start: realStart,
-        end,
-        placed: true,
-      });
+      placements.push({ activityId: act.id, name: act.name, icon: act.icon, color: act.color, start: realStart, end, placed: true });
       slot.cursor = end;
     } else {
-      placements.push({
-        activityId: act.id,
-        name: act.name,
-        icon: act.icon,
-        color: act.color,
-        placed: false,
-      });
+      placements.push({ activityId: act.id, name: act.name, icon: act.icon, color: act.color, placed: false });
     }
   }
   return placements;
