@@ -5,7 +5,10 @@ import { View, ActivityIndicator } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { format } from 'date-fns';
 import { useStore } from './src/store/useStore';
+import { setupNotifications, rescheduleAll, snooze, addResponseListener } from './src/utils/notifications';
+import { placementsByDay } from './src/utils/timeOrganizer';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -16,7 +19,32 @@ export default function App() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    loadFromStorage().then(() => setReady(true));
+    loadFromStorage().then(async () => {
+      setReady(true);
+      try {
+        const s = useStore.getState();
+        await setupNotifications();
+        await rescheduleAll({
+          habits: s.habits,
+          schedule: s.planning.schedule,
+          activities: s.planning.activities,
+          placementsByDay: s.planning.schedule ? placementsByDay(s.planning.schedule, s.planning.activities) : null,
+        });
+      } catch (e) { /* noop */ }
+    });
+
+    const sub = addResponseListener((resp) => {
+      const data = resp?.notification?.request?.content?.data || {};
+      const action = resp?.actionIdentifier;
+      if (data.type === 'activity' && data.id) {
+        const today = format(new Date(), 'yyyy-MM-dd');
+        const st = useStore.getState();
+        if (action === 'RECHAZAR') st.logActivity(today, data.id, { status: 'rejected', pct: 0 });
+        else if (action === 'POSPONER') snooze('Actividad', 'Recordatorio pospuesto', 5, data);
+        else st.logActivity(today, data.id, { status: 'done', pct: 100 });
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   if (!ready) {

@@ -42,6 +42,28 @@ export const CATEGORIES = {
   gasto: ['Alimentación', 'Transporte', 'Vivienda', 'Servicios', 'Salud', 'Educación', 'Entretenimiento', 'Ropa', 'Deudas', 'Otros'],
 };
 
+export const CARD_KINDS = [
+  { key: 'credito', label: 'Tarjeta de crédito', icon: 'card-outline' },
+  { key: 'debito', label: 'Tarjeta de débito', icon: 'card' },
+];
+export const cardKind = (k) => CARD_KINDS.find((x) => x.key === k) || CARD_KINDS[0];
+
+// Color único y consistente por categoría (para todos los gráficos)
+const CAT_COLOR_MAP = {
+  'Alimentación': '#10B981', 'Transporte': '#0EA5E9', 'Vivienda': '#7C3AED', 'Servicios': '#6366F1',
+  'Salud': '#EF4444', 'Educación': '#F59E0B', 'Entretenimiento': '#EC4899', 'Ropa': '#14B8A6',
+  'Deudas': '#F97316', 'Otros': '#8B8AA8',
+  'Sueldo': '#10B981', 'Negocio': '#7C3AED', 'Freelance': '#0EA5E9', 'Venta': '#F59E0B', 'Regalo': '#EC4899',
+};
+const CAT_PALETTE = ['#7C3AED', '#10B981', '#0EA5E9', '#F59E0B', '#EC4899', '#6366F1', '#14B8A6', '#EF4444', '#F97316', '#A78BFA'];
+export function categoryColor(name) {
+  if (CAT_COLOR_MAP[name]) return CAT_COLOR_MAP[name];
+  let h = 0;
+  const s = name || '';
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return CAT_PALETTE[h % CAT_PALETTE.length];
+}
+
 export const PERIODS = [
   { key: 'dia', label: 'Día' },
   { key: 'semana', label: 'Semana' },

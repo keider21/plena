@@ -28,7 +28,7 @@ export const SUGGESTED_ACTIVITIES = [
   { id: 'familia', name: 'Familia', icon: 'heart-outline', color: '#EC4899', minutesPerDay: 60, preferred: 'noche', enabled: false },
   { id: 'negocio', name: 'Desarrollo de negocio', icon: 'briefcase-outline', color: '#7C3AED', minutesPerDay: 60, preferred: 'tarde', enabled: false },
   { id: 'contenido', name: 'Creación de contenido', icon: 'videocam-outline', color: '#F59E0B', minutesPerDay: 30, preferred: 'tarde', enabled: false },
-  { id: 'finanzas', name: 'Finanzas', icon: 'wallet-outline', color: '#10B981', minutesPerDay: 20, preferred: 'noche', enabled: false },
+  { id: 'finanzas', name: 'Finanzas', icon: 'wallet-outline', color: '#14B8A6', minutesPerDay: 20, preferred: 'noche', enabled: false },
   { id: 'lectura', name: 'Lectura', icon: 'book-outline', color: '#6366F1', minutesPerDay: 30, preferred: 'noche', enabled: false },
   { id: 'meditacion', name: 'Meditación', icon: 'moon-outline', color: '#A78BFA', minutesPerDay: 15, preferred: 'manana', enabled: false },
 ];

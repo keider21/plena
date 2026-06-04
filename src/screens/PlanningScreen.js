@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated, Modal, TextInput } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays } from 'date-fns';
@@ -7,6 +7,7 @@ import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import EmptyState from '../components/EmptyState';
 import LineChart from '../components/LineChart';
+import { snooze } from '../utils/notifications';
 import {
   WEEKDAYS, buildDayTable, suggestPlacements, toTime, toMin, minutesToLabel,
 } from '../utils/timeOrganizer';
@@ -26,7 +27,7 @@ const statusLabel = (e) => {
 };
 
 export default function PlanningScreen({ navigation }) {
-  const { planning, logActivity } = useStore();
+  const { planning, logActivity, savePlanningSchedule } = useStore();
   const schedule = planning.schedule;
   const activities = planning.activities || [];
   const log = planning.log || {};
@@ -34,6 +35,8 @@ export default function PlanningScreen({ navigation }) {
   const [day, setDay] = useState(todayN);
   const [tick, setTick] = useState(0);
   const [session, setSession] = useState(null);
+  const [gap, setGap] = useState(null);
+  const [gapName, setGapName] = useState('');
   const pulse = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -130,6 +133,14 @@ export default function PlanningScreen({ navigation }) {
     logActivity(todayStr, session.activityId, { status: 'partial', pct });
     setSession(null);
   };
+  const posponer = () => snooze(currentSeg?.label || 'Actividad', 'Recordatorio pospuesto', 5);
+  const openGap = (seg) => { setGapName(''); setGap(seg); };
+  const fillGap = async (name, color) => {
+    if (!gap || !name || !name.trim()) return;
+    const block = { id: 'gap_' + Date.now(), name: name.trim(), start: toTime(gap.start), end: toTime(gap.end), days: [day], icon: 'flash-outline', color: color || COLORS.purple };
+    await savePlanningSchedule({ ...schedule, customBlocks: [...(schedule.customBlocks || []), block] });
+    setGap(null); setGapName('');
+  };
 
   const segColor = (type, base) =>
     type === 'hole' ? COLORS.red : (base || COLORS.purple);
@@ -193,6 +204,10 @@ export default function PlanningScreen({ navigation }) {
                     <Ionicons name="checkmark" size={18} color="#fff" />
                     <Text style={styles.nowBtnText}>Aceptar</Text>
                   </TouchableOpacity>
+                  <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.amber }]} onPress={posponer}>
+                    <Ionicons name="alarm-outline" size={18} color="#fff" />
+                    <Text style={styles.nowBtnText}>Posponer</Text>
+                  </TouchableOpacity>
                   <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.red }]} onPress={() => reject(currentSeg.activityId)}>
                     <Ionicons name="close" size={18} color="#fff" />
                     <Text style={styles.nowBtnText}>Rechazar</Text>
@@ -232,8 +247,13 @@ export default function PlanningScreen({ navigation }) {
                   <View style={styles.nowChip}><Text style={styles.nowChipText}>⏱ {fmtClock(rem)}</Text></View>
                 ) : logE && logE.status !== 'rejected' ? (
                   <View style={styles.doneChip}><Ionicons name="checkmark" size={12} color={COLORS.green} /><Text style={styles.doneChipText}>{logE.pct}%</Text></View>
+                ) : type === 'hole' ? (
+                  <TouchableOpacity style={styles.fillBtn} onPress={() => openGap(s)}>
+                    <Ionicons name="add" size={14} color={COLORS.purpleLight} />
+                    <Text style={styles.fillText}>{minutesToLabel(s.duration)}</Text>
+                  </TouchableOpacity>
                 ) : (
-                  <Text style={[styles.tDur, type === 'hole' && { color: COLORS.red }]}>{minutesToLabel(s.duration)}</Text>
+                  <Text style={styles.tDur}>{minutesToLabel(s.duration)}</Text>
                 )}
               </View>
             );
@@ -253,6 +273,32 @@ export default function PlanningScreen({ navigation }) {
           🔴 Hueco · 🟡 Ocupado · 🟣 Actividad · 🔵 Dormir
         </Text>
       </View>
+
+      {/* Modal: llenar hueco con una actividad */}
+      <Modal visible={!!gap} transparent animationType="slide" onRequestClose={() => setGap(null)}>
+        <View style={styles.gapBackdrop}>
+          <View style={styles.gapSheet}>
+            <View style={styles.gapHead}>
+              <Text style={styles.gapTitle}>Llenar hueco {gap ? `${toTime(gap.start)}–${toTime(gap.end)}` : ''}</Text>
+              <TouchableOpacity onPress={() => setGap(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
+            </View>
+            <Text style={styles.gapSub}>Usa una de tus actividades:</Text>
+            <View style={styles.gapChips}>
+              {activities.map((a) => (
+                <TouchableOpacity key={a.id} style={[styles.gapChip, { borderColor: a.color }]} onPress={() => fillGap(a.name, a.color)}>
+                  <Ionicons name={a.icon} size={14} color={a.color} />
+                  <Text style={styles.gapChipText}>{a.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <Text style={styles.gapSub}>O escribe una nueva:</Text>
+            <View style={styles.gapAddRow}>
+              <TextInput style={styles.gapInput} value={gapName} onChangeText={setGapName} placeholder="Ej. Estudiar, llamar a..." placeholderTextColor={COLORS.textMuted} />
+              <TouchableOpacity style={styles.gapAddBtn} onPress={() => fillGap(gapName, COLORS.purple)}><Ionicons name="add" size={22} color="#fff" /></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* GRÁFICA de avance */}
       <View style={styles.section}>
@@ -364,6 +410,19 @@ const styles = StyleSheet.create({
   doneChip: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: COLORS.greenDim, borderRadius: 8, paddingHorizontal: 7, paddingVertical: 4 },
   doneChipText: { color: COLORS.green, fontSize: 11, fontWeight: '700' },
   legendInline: { fontSize: 11, color: COLORS.textSub, marginTop: 10, textAlign: 'center' },
+  fillBtn: { flexDirection: 'row', alignItems: 'center', gap: 3, backgroundColor: COLORS.purpleDim, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  fillText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  gapBackdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
+  gapSheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
+  gapHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  gapTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, flex: 1 },
+  gapSub: { fontSize: 13, color: COLORS.textSub, marginTop: 10, marginBottom: 8 },
+  gapChips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  gapChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1 },
+  gapChipText: { fontSize: 13, color: COLORS.text },
+  gapAddRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  gapInput: { flex: 1, backgroundColor: COLORS.card, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: COLORS.text, fontSize: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  gapAddBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center' },
 
   todayRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 0.5, borderColor: COLORS.border },
   sIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },

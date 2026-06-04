@@ -1,15 +1,19 @@
-import { LogBox } from 'react-native';
+import { Platform } from 'react-native';
 import { registerRootComponent } from 'expo';
 import App from './App';
 
-// Las notificaciones push remotas no funcionan en Expo Go (SDK 53+).
-// Silenciamos esos avisos: la app funciona igual. Para recordatorios
-// reales hay que generar un development build / APK.
-LogBox.ignoreLogs([
-  'expo-notifications',
-  '`expo-notifications` functionality is not fully supported',
-  'Push notifications (remote notifications)',
-  'Android Push notifications',
-]);
+// LogBox no existe en react-native-web; lo usamos solo en móvil.
+// Silenciamos los avisos de expo-notifications (push remoto no va en Expo Go).
+if (Platform.OS !== 'web') {
+  const { LogBox } = require('react-native');
+  if (LogBox && LogBox.ignoreLogs) {
+    LogBox.ignoreLogs([
+      'expo-notifications',
+      '`expo-notifications` functionality is not fully supported',
+      'Push notifications (remote notifications)',
+      'Android Push notifications',
+    ]);
+  }
+}
 
 registerRootComponent(App);

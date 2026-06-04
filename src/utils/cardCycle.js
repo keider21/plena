@@ -52,6 +52,21 @@ export function dayInfo(date, card) {
   return { level, daysUntil, ratio, isCorte, isPago, freeDays };
 }
 
+// ¿Cuándo pagaré una compra hecha hoy? (para gastos con tarjeta de crédito)
+// verde = entra al próximo pago (pronto); amarillo = cerca del corte; rojo = pasa al siguiente ciclo (pagas más tarde)
+export function purchasePaymentInfo(card, ref = new Date()) {
+  if (!card || !card.cutoffDay || !card.payDay) return null;
+  const d = strip(ref);
+  const nc = nextCutoff(d, card.cutoffDay);
+  const pay = payAfter(nc, card.payDay);
+  const daysAway = differenceInCalendarDays(pay, d);
+  const daysToCut = differenceInCalendarDays(nc, d);
+  let level = 'green';
+  if (daysAway > 45) level = 'red';
+  else if (daysToCut <= 4) level = 'yellow';
+  return { payDate: pay, daysAway, daysToCut, level };
+}
+
 export function recommendation(card, ref = new Date()) {
   const info = dayInfo(ref, card);
   if (info.level === 'green') {

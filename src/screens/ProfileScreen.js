@@ -1,14 +1,16 @@
-import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import { CURRENCY_LIST } from '../utils/currency';
 import { goalProgress } from '../utils/goals';
+import { APP_VERSION, CHANGELOG } from '../utils/version';
 
 export default function ProfileScreen({ navigation }) {
   const { currentUser, logout, habits, goals, settings, setCurrency, getTodayStats, getWeeklyScore } = useStore();
+  const [changelog, setChangelog] = useState(false);
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
   const avgWeekly = weekly.length > 0
@@ -111,12 +113,45 @@ export default function ProfileScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Versión de la aplicación</Text>
+        <TouchableOpacity style={styles.versionRow} onPress={() => setChangelog(true)} activeOpacity={0.8}>
+          <View style={styles.versionBadge}><Text style={styles.versionBadgeText}>v{APP_VERSION}</Text></View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.menuLabel}>Versión {APP_VERSION}</Text>
+            <Text style={styles.versionSub}>Toca para ver las novedades</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+        </TouchableOpacity>
+      </View>
+
       <View style={styles.appInfo}>
-        <Text style={styles.appInfoText}>Vida Plena v1.0.0</Text>
+        <Text style={styles.appInfoText}>Vida Plena v{APP_VERSION}</Text>
         <Text style={styles.appInfoText}>Construido con amor para tu crecimiento</Text>
       </View>
 
       <View style={{ height: 40 }} />
+
+      <Modal visible={changelog} transparent animationType="slide" onRequestClose={() => setChangelog(false)}>
+        <View style={styles.clBackdrop}>
+          <View style={styles.clSheet}>
+            <View style={styles.clHead}>
+              <Text style={styles.clTitle}>Novedades</Text>
+              <TouchableOpacity onPress={() => setChangelog(false)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+              {CHANGELOG.map((c) => (
+                <View key={c.v} style={styles.clVersion}>
+                  <Text style={styles.clVer}>Versión {c.v} <Text style={styles.clDate}>· {c.fecha}</Text></Text>
+                  {c.cambios.map((ch, i) => (
+                    <View key={i} style={styles.clItem}><Text style={styles.clBullet}>•</Text><Text style={styles.clText}>{ch}</Text></View>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -156,4 +191,18 @@ const styles = StyleSheet.create({
   logoutText: { fontSize: 15, color: COLORS.red, fontWeight: '600' },
   appInfo: { alignItems: 'center', paddingTop: 24, gap: 4 },
   appInfoText: { fontSize: 12, color: COLORS.textMuted },
+  versionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12 },
+  versionBadge: { backgroundColor: COLORS.purpleDim, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  versionBadgeText: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '800' },
+  versionSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 1 },
+  clBackdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
+  clSheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
+  clHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  clTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  clVersion: { marginBottom: 18 },
+  clVer: { fontSize: 15, fontWeight: '700', color: COLORS.purpleLight, marginBottom: 8 },
+  clDate: { fontSize: 12, color: COLORS.textMuted, fontWeight: '400' },
+  clItem: { flexDirection: 'row', gap: 8, paddingVertical: 3 },
+  clBullet: { color: COLORS.green, fontSize: 14 },
+  clText: { flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 19 },
 });

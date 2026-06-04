@@ -248,6 +248,18 @@ export function buildDayTable(schedule, weekday, activities, gapThreshold = 30) 
   return { segments, freeReal, holesCount: holes.length, holesMin: holes.reduce((a, s) => a + s.duration, 0) };
 }
 
+// Actividades colocadas por día de la semana (para programar notificaciones)
+export function placementsByDay(schedule, activities) {
+  const out = {};
+  if (!schedule) return out;
+  for (let d = 0; d < 7; d++) {
+    out[d] = suggestPlacements(schedule, d, activities)
+      .filter((p) => p.placed)
+      .map((p) => ({ activityId: p.activityId, name: p.name, start: p.start }));
+  }
+  return out;
+}
+
 // Construye la línea de tiempo ordenada del día (ocupados + actividades sugeridas)
 export function buildTimeline(schedule, weekday, activities) {
   if (!schedule) return [];

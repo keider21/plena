@@ -5,7 +5,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
-import { WEEKDAYS, PREFERENCES } from '../utils/timeOrganizer';
+import { WEEKDAYS, PREFERENCES, placementsByDay } from '../utils/timeOrganizer';
+import { rescheduleAll } from '../utils/notifications';
 import TimePickerField from '../components/TimePickerField';
 
 const PALETTE = ['#7C3AED', '#10B981', '#0EA5E9', '#F59E0B', '#EC4899', '#6366F1', '#A78BFA'];
@@ -125,6 +126,10 @@ export default function PlanningWizard({ navigation }) {
 
   const handleSave = async () => {
     await savePlanning({ schedule, activities });
+    try {
+      const habits = useStore.getState().habits;
+      await rescheduleAll({ habits, schedule, activities, placementsByDay: placementsByDay(schedule, activities) });
+    } catch (e) { /* noop */ }
     navigation.goBack();
   };
 

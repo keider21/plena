@@ -5,11 +5,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
+import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
 import {
   ACCOUNT_TYPES, accountType, LOAN_TYPES, loanType, DEBT_PRIORITIES, debtPriority,
-  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending,
+  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, categoryColor, CARD_KINDS,
 } from '../utils/finance';
+import { purchasePaymentInfo } from '../utils/cardCycle';
+import Dropdown from '../components/Dropdown';
 import EmptyState from '../components/EmptyState';
+
+const fmtDate = (d) => format(d, "d 'de' MMM", { locale: es });
 
 const TABS = [
   { key: 'resumen', label: 'Resumen' },
@@ -62,7 +68,7 @@ export default function FinanzasScreen({ navigation }) {
     const defaults = {
       account: { name: '', type: 'yape', currency: cur, balance: '' },
       movement: { type: 'gasto', accountId: finance.accounts[0]?.id, toAccountId: finance.accounts[1]?.id, amount: '', category: 'Otros', note: '' },
-      card: { bank: '', currency: cur, limit: '', used: '', cycleStartDay: '', cutoffDay: '', payDay: '', minPayment: '', totalPayment: '', interest: '' },
+      card: { kind: 'credito', bank: '', currency: cur, limit: '', used: '', cycleStartDay: '', cutoffDay: '', payDay: '', minPayment: '', totalPayment: '', interest: '' },
       loan: { name: '', lenderType: 'banco', currency: cur, installment: '', installmentsTotal: '', installmentsPaid: '', interest: '', startDate: '', endDate: '' },
       debt: { name: '', creditor: '', currency: cur, amount: '', paid: '', priority: 'media', dueDate: '' },
     };
@@ -87,7 +93,7 @@ export default function FinanzasScreen({ navigation }) {
         amount: num(f.amount), category: f.type === 'transferencia' ? null : f.category, note: f.note?.trim() || '',
       });
     } else if (modal.type === 'card') {
-      const p = { bank: f.bank?.trim() || 'Tarjeta', currency: f.currency, limit: num(f.limit), used: num(f.used), cycleStartDay: num(f.cycleStartDay), cutoffDay: num(f.cutoffDay), payDay: num(f.payDay), minPayment: num(f.minPayment), totalPayment: num(f.totalPayment), interest: num(f.interest) };
+      const p = { kind: f.kind || 'credito', bank: f.bank?.trim() || 'Tarjeta', currency: f.currency, limit: num(f.limit), used: num(f.used), cycleStartDay: num(f.cycleStartDay), cutoffDay: num(f.cutoffDay), payDay: num(f.payDay), minPayment: num(f.minPayment), totalPayment: num(f.totalPayment), interest: num(f.interest) };
       id ? await store.updateCard(id, p) : await store.addCard(p);
     } else if (modal.type === 'loan') {
       const p = { name: f.name?.trim() || 'Préstamo', lenderType: f.lenderType, currency: f.currency, installment: num(f.installment), installmentsTotal: num(f.installmentsTotal), installmentsPaid: num(f.installmentsPaid), interest: num(f.interest), startDate: f.startDate, endDate: f.endDate };
@@ -186,33 +192,51 @@ export default function FinanzasScreen({ navigation }) {
                     <Field label="Hacia"><Chips options={finance.accounts.map((a) => ({ key: a.id, label: a.name }))} value={f.toAccountId} onChange={(v) => set('toAccountId', v)} /></Field>
                   )}
                   <Field label="Monto"><TextInput style={styles.input} value={String(f.amount)} onChangeText={(v) => set('amount', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                  {(() => {
+                    const selCard = finance.cards.find((c) => c.id === f.accountId);
+                    if (f.type !== 'gasto' || !selCard || selCard.kind === 'debito') return null;
+                    const info = purchasePaymentInfo(selCard);
+                    if (!info) return <Text style={styles.payNoteMuted}>Configura corte y pago de esta tarjeta para ver cuándo pagarás.</Text>;
+                    const col = info.level === 'green' ? COLORS.green : info.level === 'yellow' ? COLORS.amber : COLORS.red;
+                    return (
+                      <View style={[styles.payNote, { borderColor: col + '88' }]}>
+                        <Text style={[styles.payNoteText, { color: col }]}>💳 Pagarás esta compra el {fmtDate(info.payDate)} ({info.daysAway} días)</Text>
+                      </View>
+                    );
+                  })()}
                   {f.type !== 'transferencia' && (
-                    <Field label="Categoría"><Chips options={CATEGORIES[f.type] || CATEGORIES.gasto} value={f.category} onChange={(v) => set('category', v)} /></Field>
+                    <Field label="Categoría">
+                      <Dropdown options={(CATEGORIES[f.type] || CATEGORIES.gasto).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
+                    </Field>
                   )}
                   <Field label="Nota (opcional)"><TextInput style={styles.input} value={f.note} onChangeText={(v) => set('note', v)} placeholder="Detalle..." placeholderTextColor={COLORS.textMuted} /></Field>
                 </>
               )}
               {modal?.type === 'card' && (
                 <>
+                  <Field label="Tipo de tarjeta"><Dropdown options={CARD_KINDS} value={f.kind} onChange={(v) => set('kind', v)} /></Field>
                   <Field label="Banco / nombre"><TextInput style={styles.input} value={f.bank} onChangeText={(v) => set('bank', v)} placeholder="Ej. BCP Visa" placeholderTextColor={COLORS.textMuted} /></Field>
                   <Field label="Moneda"><Chips options={CUR_OPTS} value={f.currency} onChange={(v) => set('currency', v)} /></Field>
-                  <Row>
-                    <Half label="Línea de crédito"><TextInput style={styles.input} value={String(f.limit)} onChangeText={(v) => set('limit', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
-                    <Half label="Utilizado"><TextInput style={styles.input} value={String(f.used)} onChangeText={(v) => set('used', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
-                  </Row>
-                  <Row>
-                    <Half label="Inicio de ciclo (día)"><TextInput style={styles.input} value={String(f.cycleStartDay)} onChangeText={(v) => set('cycleStartDay', v)} keyboardType="numeric" placeholder="Ej. 6" placeholderTextColor={COLORS.textMuted} /></Half>
-                    <Half label="Día de corte"><TextInput style={styles.input} value={String(f.cutoffDay)} onChangeText={(v) => set('cutoffDay', v)} keyboardType="numeric" placeholder="Ej. 5" placeholderTextColor={COLORS.textMuted} /></Half>
-                  </Row>
-                  <Row>
-                    <Half label="Día de pago"><TextInput style={styles.input} value={String(f.payDay)} onChangeText={(v) => set('payDay', v)} keyboardType="numeric" placeholder="Ej. 22" placeholderTextColor={COLORS.textMuted} /></Half>
-                    <Half label=" "><View /></Half>
-                  </Row>
-                  <Row>
-                    <Half label="Pago mínimo"><TextInput style={styles.input} value={String(f.minPayment)} onChangeText={(v) => set('minPayment', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
-                    <Half label="Pago total"><TextInput style={styles.input} value={String(f.totalPayment)} onChangeText={(v) => set('totalPayment', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
-                  </Row>
-                  <Field label="Interés (% TEA)"><TextInput style={styles.input} value={String(f.interest)} onChangeText={(v) => set('interest', v)} keyboardType="numeric" placeholder="Ej. 60" placeholderTextColor={COLORS.textMuted} /></Field>
+                  {f.kind !== 'debito' && (
+                    <>
+                      <Row>
+                        <Half label="Línea de crédito"><TextInput style={styles.input} value={String(f.limit)} onChangeText={(v) => set('limit', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                        <Half label="Utilizado"><TextInput style={styles.input} value={String(f.used)} onChangeText={(v) => set('used', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                      </Row>
+                      <Row>
+                        <Half label="Inicio de ciclo (día)"><TextInput style={styles.input} value={String(f.cycleStartDay)} onChangeText={(v) => set('cycleStartDay', v)} keyboardType="numeric" placeholder="Ej. 6" placeholderTextColor={COLORS.textMuted} /></Half>
+                        <Half label="Día de corte"><TextInput style={styles.input} value={String(f.cutoffDay)} onChangeText={(v) => set('cutoffDay', v)} keyboardType="numeric" placeholder="Ej. 5" placeholderTextColor={COLORS.textMuted} /></Half>
+                      </Row>
+                      <Row>
+                        <Half label="Día de pago"><TextInput style={styles.input} value={String(f.payDay)} onChangeText={(v) => set('payDay', v)} keyboardType="numeric" placeholder="Ej. 22" placeholderTextColor={COLORS.textMuted} /></Half>
+                        <Half label="Interés (% TEA)"><TextInput style={styles.input} value={String(f.interest)} onChangeText={(v) => set('interest', v)} keyboardType="numeric" placeholder="Ej. 60" placeholderTextColor={COLORS.textMuted} /></Half>
+                      </Row>
+                      <Row>
+                        <Half label="Pago mínimo"><TextInput style={styles.input} value={String(f.minPayment)} onChangeText={(v) => set('minPayment', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                        <Half label="Pago total"><TextInput style={styles.input} value={String(f.totalPayment)} onChangeText={(v) => set('totalPayment', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                      </Row>
+                    </>
+                  )}
                 </>
               )}
               {modal?.type === 'loan' && (
@@ -303,7 +327,7 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
           {cats.map(([c, v]) => (
             <View key={c} style={styles.catRow}>
               <Text style={styles.catName}>{c}</Text>
-              <View style={styles.catBarBg}><View style={[styles.catBarFill, { width: `${Math.round((v / maxCat) * 100)}%` }]} /></View>
+              <View style={styles.catBarBg}><View style={[styles.catBarFill, { width: `${Math.round((v / maxCat) * 100)}%`, backgroundColor: categoryColor(c) }]} /></View>
               <Text style={styles.catVal}>{formatMoney(v, cur)}</Text>
             </View>
           ))}
@@ -368,32 +392,39 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar }) {
         const avail = Math.max(0, (c.limit || 0) - (c.used || 0));
         const pct = c.limit ? Math.min(100, Math.round((c.used / c.limit) * 100)) : 0;
         const danger = pct >= 70;
+        const isCredito = c.kind !== 'debito';
         return (
           <TouchableOpacity key={c.id} style={styles.bigCard} onPress={() => onEdit(c)} onLongPress={() => onDel(c)} activeOpacity={0.85}>
             <View style={styles.bigCardHead}>
-              <Ionicons name="card" size={20} color={COLORS.purpleLight} />
+              <Ionicons name={isCredito ? 'card' : 'card-outline'} size={20} color={COLORS.purpleLight} />
               <Text style={styles.bigCardTitle}>{c.bank}</Text>
+              <View style={styles.kindBadge}><Text style={styles.kindBadgeText}>{isCredito ? 'Crédito' : 'Débito'}</Text></View>
               <Text style={styles.bigCardCur}>{c.currency}</Text>
             </View>
-            <View style={styles.cardUseBg}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: danger ? COLORS.red : COLORS.green }]} /></View>
-            <View style={styles.cardRow2}>
-              <Text style={styles.cardUsed}>Usado {formatMoney(c.used, c.currency)} ({pct}%)</Text>
-              <Text style={styles.cardAvail}>Disp. {formatMoney(avail, c.currency)}</Text>
-            </View>
-            <View style={styles.miniGrid}>
-              <Mini label="Línea" val={formatMoney(c.limit, c.currency)} />
-              <Mini label="Inicio ciclo" val={c.cycleStartDay ? `Día ${c.cycleStartDay}` : '—'} />
-              <Mini label="Corte" val={c.cutoffDay ? `Día ${c.cutoffDay}` : '—'} />
-              <Mini label="Pago" val={c.payDay ? `Día ${c.payDay}` : '—'} />
-              <Mini label="Pago mín." val={formatMoney(c.minPayment, c.currency)} />
-              <Mini label="Pago total" val={formatMoney(c.totalPayment, c.currency)} />
-              <Mini label="Interés" val={c.interest ? `${c.interest}%` : '—'} />
-            </View>
-            <TouchableOpacity style={styles.cardCalBtn} onPress={() => onCalendar(c)} activeOpacity={0.8}>
-              <Ionicons name="calendar-outline" size={16} color={COLORS.purpleLight} />
-              <Text style={styles.cardCalText}>Calendario de compras y pagos</Text>
-              <Ionicons name="chevron-forward" size={16} color={COLORS.purpleLight} />
-            </TouchableOpacity>
+            {isCredito ? (
+              <>
+                <View style={styles.cardUseBg}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: danger ? COLORS.red : COLORS.green }]} /></View>
+                <View style={styles.cardRow2}>
+                  <Text style={styles.cardUsed}>Usado {formatMoney(c.used, c.currency)} ({pct}%)</Text>
+                  <Text style={styles.cardAvail}>Disp. {formatMoney(avail, c.currency)}</Text>
+                </View>
+                <View style={styles.miniGrid}>
+                  <Mini label="Línea" val={formatMoney(c.limit, c.currency)} />
+                  <Mini label="Inicio ciclo" val={c.cycleStartDay ? `Día ${c.cycleStartDay}` : '—'} />
+                  <Mini label="Corte" val={c.cutoffDay ? `Día ${c.cutoffDay}` : '—'} />
+                  <Mini label="Pago" val={c.payDay ? `Día ${c.payDay}` : '—'} />
+                  <Mini label="Pago mín." val={formatMoney(c.minPayment, c.currency)} />
+                  <Mini label="Interés" val={c.interest ? `${c.interest}%` : '—'} />
+                </View>
+                <TouchableOpacity style={styles.cardCalBtn} onPress={() => onCalendar(c)} activeOpacity={0.8}>
+                  <Ionicons name="calendar-outline" size={16} color={COLORS.purpleLight} />
+                  <Text style={styles.cardCalText}>Calendario de compras y pagos</Text>
+                  <Ionicons name="chevron-forward" size={16} color={COLORS.purpleLight} />
+                </TouchableOpacity>
+              </>
+            ) : (
+              <Text style={styles.debitoNote}>Tarjeta de débito · paga directo de tu saldo</Text>
+            )}
           </TouchableOpacity>
         );
       })}
@@ -541,4 +572,10 @@ const styles = StyleSheet.create({
   saveText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   delModalBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, borderRadius: 12, borderWidth: 1, borderColor: COLORS.red + '55', marginTop: 10 },
   delModalText: { color: COLORS.red, fontSize: 15, fontWeight: '700' },
+  payNote: { borderWidth: 1, borderRadius: 10, padding: 10, marginBottom: 14, backgroundColor: COLORS.bg3 },
+  payNoteText: { fontSize: 13, fontWeight: '700' },
+  payNoteMuted: { fontSize: 12, color: COLORS.textMuted, marginBottom: 14 },
+  kindBadge: { backgroundColor: COLORS.purpleDim, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
+  kindBadgeText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
+  debitoNote: { fontSize: 13, color: COLORS.textSub, marginTop: 4 },
 });
