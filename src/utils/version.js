@@ -1,7 +1,17 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.05';
+export const APP_VERSION = '0.06';
 
 export const CHANGELOG = [
+  {
+    v: '0.06',
+    fecha: '2026-06-05',
+    cambios: [
+      'Historial protegido: editar el plan ya NO cambia días pasados ni estadísticas/gráficos antiguos',
+      '"Tu día" es editable solo para HOY — mantén presionada una actividad para cambiar hora/actividad, moverla o eliminarla',
+      'Editar el plan (botón "Editar plan") afecta de hoy en adelante; los otros días muestran tu plantilla',
+      'Llenar un hueco ya no duplica actividades (se crea solo para el día de hoy)',
+    ],
+  },
   {
     v: '0.05',
     fecha: '2026-06-05',

@@ -35,9 +35,10 @@ export const SUGGESTED_ACTIVITIES = [
 ];
 
 const DEFAULT_PLANNING = {
-  schedule: null,        // se llena con el asistente
+  schedule: null,        // se llena con el asistente (PLANTILLA recurrente)
   activities: SUGGESTED_ACTIVITIES,
-  log: {},               // { 'yyyy-MM-dd': { activityId: { status, pct } } }
+  log: {},               // { 'yyyy-MM-dd': { activityId: { status, pct, name, color } } }
+  dayPlans: {},          // { 'yyyy-MM-dd': [ {id, activityId, name, icon, color, start, end} ] } instancias por día
 };
 
 export const useStore = create((set, get) => ({
@@ -123,7 +124,7 @@ export const useStore = create((set, get) => ({
         onboardingDone: onbRaw === 'true',
         settings: settingsRaw ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsRaw) } : DEFAULT_SETTINGS,
         planning: savedPlanning
-          ? { schedule: savedPlanning.schedule || null, activities: savedPlanning.activities || SUGGESTED_ACTIVITIES, log: savedPlanning.log || {} }
+          ? { schedule: savedPlanning.schedule || null, activities: savedPlanning.activities || SUGGESTED_ACTIVITIES, log: savedPlanning.log || {}, dayPlans: savedPlanning.dayPlans || {} }
           : DEFAULT_PLANNING,
         calendar: calendarRaw
           ? { events: JSON.parse(calendarRaw).events || [], objectives: JSON.parse(calendarRaw).objectives || [] }
@@ -144,6 +145,15 @@ export const useStore = create((set, get) => ({
   // ─── PLANNING ────────────────────────────────────────────
   savePlanning: async (planning) => {
     const merged = { ...get().planning, ...planning };
+    set({ planning: merged });
+    await AsyncStorage.setItem('planning', JSON.stringify(merged));
+  },
+
+  // Guarda las instancias (actividades concretas) de un día específico
+  saveDayPlan: async (dateStr, instances) => {
+    const planning = get().planning;
+    const dayPlans = { ...(planning.dayPlans || {}), [dateStr]: instances };
+    const merged = { ...planning, dayPlans };
     set({ planning: merged });
     await AsyncStorage.setItem('planning', JSON.stringify(merged));
   },

@@ -181,7 +181,7 @@ export function suggestPlacements(schedule, weekday, activities) {
 // Tabla completa del día: ocupados + actividades + huecos clasificados.
 // Un "hueco" es un espacio libre menor a gapThreshold minutos (difícil de aprovechar).
 // freeReal = tiempo libre REAL (no incluye lo ya asignado a actividades ni los huecos).
-export function buildDayTable(schedule, weekday, activities, gapThreshold = 30) {
+function assembleDay(schedule, weekday, placedActivities, gapThreshold = 30) {
   if (!schedule) return { segments: [], freeReal: 0, holesCount: 0, holesMin: 0 };
 
   const wake = toMin(schedule.wakeTime);
@@ -198,24 +198,16 @@ export function buildDayTable(schedule, weekday, activities, gapThreshold = 30) 
   };
 
   const busy = getBusyBlocks(schedule, weekday).map(norm);
-  const placed = suggestPlacements(schedule, weekday, activities)
-    .filter((p) => p.placed)
-    .map((p) => ({ start: p.start, end: p.end, label: p.name, icon: p.icon, color: p.color, type: 'activity', activityId: p.activityId }));
+  const placed = (placedActivities || []).map(norm);
   const occ = [...busy, ...placed].sort((a, b) => a.start - b.start);
 
   const segments = [];
   let cursor = wake;
   for (const o of occ) {
-    if (o.end <= cursor) continue; // contenido dentro de un bloque anterior
+    if (o.end <= cursor) continue;
     if (o.start > cursor) {
       const dur = Math.min(o.start, sleep) - cursor;
-      if (dur > 0) {
-        segments.push({
-          start: cursor, end: cursor + dur, duration: dur,
-          type: 'hole',
-          label: 'Hueco',
-        });
-      }
+      if (dur > 0) segments.push({ start: cursor, end: cursor + dur, duration: dur, type: 'hole', label: 'Hueco' });
     }
     const s = Math.max(o.start, cursor);
     const e = Math.min(o.end, sleep);
@@ -225,16 +217,42 @@ export function buildDayTable(schedule, weekday, activities, gapThreshold = 30) 
   }
   if (cursor < sleep) {
     const dur = sleep - cursor;
-    segments.push({
-      start: cursor, end: sleep, duration: dur,
-      type: 'hole',
-      label: 'Hueco',
-    });
+    segments.push({ start: cursor, end: sleep, duration: dur, type: 'hole', label: 'Hueco' });
   }
 
   const freeReal = segments.filter((s) => s.type === 'free').reduce((a, s) => a + s.duration, 0);
   const holes = segments.filter((s) => s.type === 'hole');
   return { segments, freeReal, holesCount: holes.length, holesMin: holes.reduce((a, s) => a + s.duration, 0) };
+}
+
+// Tabla del día desde la PLANTILLA (auto-organiza las actividades)
+export function buildDayTable(schedule, weekday, activities, gapThreshold = 30) {
+  const placed = suggestPlacements(schedule, weekday, activities)
+    .filter((p) => p.placed)
+    .map((p) => ({ start: p.start, end: p.end, label: p.name, icon: p.icon, color: p.color, type: 'activity', activityId: p.activityId }));
+  return assembleDay(schedule, weekday, placed, gapThreshold);
+}
+
+// Tabla del día desde INSTANCIAS concretas (lo que el usuario fijó para ESE día)
+export function buildDayWith(schedule, weekday, instances, gapThreshold = 30) {
+  const placed = (instances || []).map((it) => ({
+    start: toMin(it.start), end: toMin(it.end), label: it.name,
+    icon: it.icon || 'ellipse-outline', color: it.color || '#7C3AED',
+    type: 'activity', activityId: it.activityId || it.id, instanceId: it.id,
+  }));
+  return assembleDay(schedule, weekday, placed, gapThreshold);
+}
+
+// Convierte la plantilla de un día en instancias editables (snapshot)
+export function instancesFromTemplate(schedule, weekday, activities, dateStr) {
+  return suggestPlacements(schedule, weekday, activities)
+    .filter((p) => p.placed)
+    .map((p) => ({
+      id: `${p.activityId}_${dateStr}`,
+      activityId: p.activityId,
+      name: p.name, icon: p.icon, color: p.color,
+      start: toTime(p.start), end: toTime(p.end),
+    }));
 }
 
 // Actividades colocadas por día de la semana (para programar notificaciones)
