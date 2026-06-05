@@ -85,6 +85,13 @@ export function getBusyBlocks(schedule, weekday) {
     }
   });
 
+  if (schedule.nap?.enabled) {
+    blocks.push({
+      start: toMin(schedule.nap.start), end: toMin(schedule.nap.end),
+      label: 'Siesta', type: 'nap', icon: 'moon-outline', color: '#6366F1',
+    });
+  }
+
   return blocks.filter((b) => b.end > b.start).sort((a, b) => a.start - b.start);
 }
 

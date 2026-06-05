@@ -1,7 +1,17 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.06';
+export const APP_VERSION = '0.07';
 
 export const CHANGELOG = [
+  {
+    v: '0.07',
+    fecha: '2026-06-05',
+    cambios: [
+      'Reanudar actividades: pausar (Detener) y continuar contando desde el tiempo acumulado + Finalizar',
+      'Cambiar la actividad antes de aceptarla, y también después (con aviso de que perderás el progreso)',
+      'Reactivar una actividad rechazada por error mientras su horario siga vigente',
+      'Siesta opcional (aparte del sueño principal; no cuenta en productividad ni en los gráficos)',
+    ],
+  },
   {
     v: '0.06',
     fecha: '2026-06-05',

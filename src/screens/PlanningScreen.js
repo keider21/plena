@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated, Modal, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated, Modal, TextInput, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays } from 'date-fns';
@@ -28,7 +28,7 @@ const statusLabel = (e) => {
 };
 
 export default function PlanningScreen({ navigation }) {
-  const { planning, logActivity, saveDayPlan } = useStore();
+  const { planning, logActivity, saveDayPlan, clearActivityLog } = useStore();
   const schedule = planning.schedule;
   const activities = planning.activities || [];
   const log = planning.log || {};
@@ -142,15 +142,34 @@ export default function PlanningScreen({ navigation }) {
 
   const sleepDur = ((toMin(schedule.wakeTime) - toMin(schedule.sleepTime)) + 1440) % 1440;
 
-  const accept = (seg) => setSession({ activityId: seg.activityId, startMs: Date.now(), blockEnd: seg.end, durMin: Math.max(1, seg.end - seg.start) });
+  const elapsedSec = session ? (session.accumulatedSec + (session.runningSince ? Math.floor((Date.now() - session.runningSince) / 1000) : 0)) : 0;
+  const pctOf = (sec) => (session ? Math.max(0, Math.min(100, Math.round((sec / 60 / session.durMin) * 100))) : 0);
+
+  const accept = (seg) => setSession({ activityId: seg.activityId, blockEnd: seg.end, durMin: Math.max(1, seg.end - seg.start), accumulatedSec: 0, runningSince: Date.now() });
   const reject = (id) => logActivity(todayStr, id, { status: 'rejected', pct: 0 });
-  const stop = () => {
-    const elapsedMin = (Date.now() - session.startMs) / 60000;
-    const pct = Math.max(0, Math.min(100, Math.round((elapsedMin / session.durMin) * 100)));
-    logActivity(todayStr, session.activityId, { status: 'partial', pct });
+  const reactivar = (id) => clearActivityLog(todayStr, id);
+  const pause = () => {
+    const add = session.runningSince ? Math.floor((Date.now() - session.runningSince) / 1000) : 0;
+    const acc = session.accumulatedSec + add;
+    logActivity(todayStr, session.activityId, { status: 'partial', pct: pctOf(acc) });
+    setSession({ ...session, accumulatedSec: acc, runningSince: null });
+  };
+  const resume = () => setSession((s) => ({ ...s, runningSince: Date.now() }));
+  const finalize = () => {
+    logActivity(todayStr, session.activityId, { status: 'partial', pct: pctOf(elapsedSec) });
     setSession(null);
   };
   const posponer = () => snooze(currentSeg?.label || 'Actividad', 'Recordatorio pospuesto', 5);
+  const changeActivity = (seg, hasProgress) => {
+    if (hasProgress) {
+      Alert.alert('Cambiar actividad', 'Esta actividad ya tiene progreso registrado. Si continúas perderás el progreso acumulado. ¿Deseas continuar?', [
+        { text: 'Cancelar' },
+        { text: 'Continuar', style: 'destructive', onPress: () => { setSession(null); openInstEdit(seg); } },
+      ]);
+    } else {
+      openInstEdit(seg);
+    }
+  };
 
   // Llenar hueco → crea una instancia SOLO para hoy (no toca la plantilla → sin duplicados)
   const openGap = (seg) => { setGapName(''); setGap(seg); };
@@ -220,10 +239,31 @@ export default function PlanningScreen({ navigation }) {
 
           {currentSeg.type === 'activity' ? (
             session?.activityId === currentSeg.activityId ? (
+              <>
+                <Text style={styles.nowStatus}>{session.runningSince ? '▶ En curso' : '⏸ En pausa'} · {fmtClock(elapsedSec)} ({pctOf(elapsedSec)}%)</Text>
+                <View style={styles.nowBtns}>
+                  {session.runningSince ? (
+                    <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.amber }]} onPress={pause}>
+                      <Ionicons name="pause" size={16} color="#fff" /><Text style={styles.nowBtnText}>Detener</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.green }]} onPress={resume}>
+                      <Ionicons name="play" size={16} color="#fff" /><Text style={styles.nowBtnText}>Reanudar</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.purple }]} onPress={finalize}>
+                    <Ionicons name="checkmark-done" size={16} color="#fff" /><Text style={styles.nowBtnText}>Finalizar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.bg2 }]} onPress={() => changeActivity(currentSeg, true)}>
+                    <Ionicons name="swap-horizontal" size={16} color={COLORS.purpleLight} /><Text style={[styles.nowBtnText, { color: COLORS.purpleLight }]}>Cambiar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            ) : dayLog[currentSeg.activityId]?.status === 'rejected' ? (
               <View style={styles.nowBtns}>
-                <View style={styles.runChip}><Text style={styles.runChipText}>▶ En curso · {fmtClock(Math.floor((Date.now() - session.startMs) / 1000))}</Text></View>
-                <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.amber }]} onPress={stop}>
-                  <Ionicons name="stop" size={16} color="#fff" /><Text style={styles.nowBtnText}>Detener</Text>
+                <View style={styles.runChip}><Text style={[styles.runChipText, { color: COLORS.red }]}>Rechazada ✕</Text></View>
+                <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.green }]} onPress={() => reactivar(currentSeg.activityId)}>
+                  <Ionicons name="refresh" size={16} color="#fff" /><Text style={styles.nowBtnText}>Reactivar</Text>
                 </TouchableOpacity>
               </View>
             ) : dayLog[currentSeg.activityId] ? (
@@ -240,6 +280,9 @@ export default function PlanningScreen({ navigation }) {
                   </TouchableOpacity>
                   <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.red }]} onPress={() => reject(currentSeg.activityId)}>
                     <Ionicons name="close" size={18} color="#fff" /><Text style={styles.nowBtnText}>Rechazar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.nowBtn, { backgroundColor: COLORS.bg2 }]} onPress={() => changeActivity(currentSeg, false)}>
+                    <Ionicons name="swap-horizontal" size={18} color={COLORS.purpleLight} /><Text style={[styles.nowBtnText, { color: COLORS.purpleLight }]}>Cambiar</Text>
                   </TouchableOpacity>
                 </View>
               </>

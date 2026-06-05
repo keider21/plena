@@ -24,6 +24,7 @@ const DEFAULT_SCHEDULE = {
     { id: 'almuerzo', name: 'Almuerzo', start: '13:00', end: '14:00', enabled: true },
     { id: 'cena', name: 'Cena', start: '20:00', end: '20:45', enabled: true },
   ],
+  nap: { enabled: false, start: '15:00', end: '15:30' },
 };
 
 function Toggle({ value, onChange }) {
@@ -151,6 +152,21 @@ export default function PlanningWizard({ navigation }) {
               </View>
             </View>
           ))}
+        </View>
+
+        {/* Siesta */}
+        <View style={styles.card}>
+          <View style={styles.cardHead}>
+            <Text style={styles.cardTitle}>😴 Siesta (opcional)</Text>
+            <Toggle value={!!schedule.nap?.enabled} onChange={(v) => setSchedule((s) => ({ ...s, nap: { start: '15:00', end: '15:30', ...(s.nap || {}), enabled: v } }))} />
+          </View>
+          <Text style={styles.cardSub}>Aparte del sueño principal. No cuenta en productividad ni gráficos.</Text>
+          {schedule.nap?.enabled && (
+            <View style={styles.twoCol}>
+              <View style={{ flex: 1 }}><Text style={styles.miniLabel}>Desde</Text><TimePickerField value={schedule.nap.start} onChange={(v) => setSchedule((s) => ({ ...s, nap: { ...s.nap, start: v } }))} compact /></View>
+              <View style={{ flex: 1 }}><Text style={styles.miniLabel}>Hasta</Text><TimePickerField value={schedule.nap.end} onChange={(v) => setSchedule((s) => ({ ...s, nap: { ...s.nap, end: v } }))} compact /></View>
+            </View>
+          )}
         </View>
 
         {/* Actividades */}
