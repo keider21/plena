@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Switch
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Switch, Modal, TextInput
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,6 +11,15 @@ import { COLORS, CAT_COLORS } from '../utils/theme';
 import { scheduleHabitReminder, cancelHabitReminder, sendTestNotification } from '../utils/notifications';
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
+
+const SUGGESTIONS = [
+  { name: 'Leer', icon: 'book', color: '#6366F1', category: 'mente' },
+  { name: 'Caminar', icon: 'walk', color: '#10B981', category: 'salud' },
+  { name: 'Ejercicio', icon: 'barbell', color: '#EF4444', category: 'salud' },
+  { name: 'Beber agua', icon: 'water', color: '#0EA5E9', category: 'salud' },
+  { name: 'Meditar', icon: 'leaf', color: '#A78BFA', category: 'mente' },
+  { name: 'Dormir temprano', icon: 'moon', color: '#7C3AED', category: 'salud' },
+];
 
 function MiniChart({ data, color }) {
   const max = 1;
@@ -135,9 +144,24 @@ function HabitCard({ habit, onLog, onToggleReminder, logs }) {
 }
 
 export default function HabitosScreen() {
-  const { habits, habitLogs, logHabit, saveHabits } = useStore();
+  const { habits, habitLogs, logHabit, saveHabits, addHabit } = useStore();
   const [filter, setFilter] = useState('todos');
+  const [addModal, setAddModal] = useState(false);
+  const [newName, setNewName] = useState('');
   const cats = ['todos', 'salud', 'mente', 'finanzas', 'familia', 'empresa'];
+
+  const addSuggestion = async (s) => {
+    if (habits.some((h) => h.name.toLowerCase() === s.name.toLowerCase())) { Alert.alert('Ya lo tienes', `"${s.name}" ya está en tus hábitos.`); return; }
+    await addHabit({ ...s, reminder: '08:00' });
+    setAddModal(false);
+  };
+  const addCustom = async () => {
+    const n = newName.trim();
+    if (!n) return;
+    await addHabit({ name: n, icon: 'star', color: COLORS.purple, category: filter === 'todos' ? 'salud' : filter, reminder: '08:00' });
+    setNewName('');
+    setAddModal(false);
+  };
 
   const filtered = habits.filter(h => filter === 'todos' || h.category === filter);
 
@@ -163,6 +187,7 @@ export default function HabitosScreen() {
   const pct = todayTotal > 0 ? Math.round((todayDone / todayTotal) * 100) : 0;
 
   return (
+    <View style={{ flex: 1 }}>
     <ScrollView style={styles.bg} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
       <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.header}>
@@ -202,8 +227,42 @@ export default function HabitosScreen() {
         ))}
       </View>
 
-      <View style={{ height: 24 }} />
+      {habits.length === 0 && (
+        <Text style={styles.emptyHint}>Aún no tienes hábitos. Toca el + para agregar uno.</Text>
+      )}
+
+      <View style={{ height: 90 }} />
     </ScrollView>
+
+    <TouchableOpacity style={styles.fab} onPress={() => setAddModal(true)} activeOpacity={0.85}>
+      <Ionicons name="add" size={28} color="#fff" />
+    </TouchableOpacity>
+
+    <Modal visible={addModal} transparent animationType="slide" onRequestClose={() => setAddModal(false)}>
+      <View style={styles.backdrop}>
+        <View style={styles.sheet}>
+          <View style={styles.sheetHead}>
+            <Text style={styles.sheetTitle}>Nuevo hábito</Text>
+            <TouchableOpacity onPress={() => setAddModal(false)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
+          </View>
+          <Text style={styles.sheetSub}>Sugerencias rápidas:</Text>
+          <View style={styles.suggWrap}>
+            {SUGGESTIONS.map((s) => (
+              <TouchableOpacity key={s.name} style={[styles.suggChip, { borderColor: s.color }]} onPress={() => addSuggestion(s)}>
+                <Ionicons name={s.icon + '-outline'} size={16} color={s.color} />
+                <Text style={styles.suggText}>{s.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.sheetSub}>O crea uno personalizado:</Text>
+          <View style={styles.addRow}>
+            <TextInput style={styles.addInput} value={newName} onChangeText={setNewName} placeholder="Ej. Escribir diario" placeholderTextColor={COLORS.textMuted} onSubmitEditing={addCustom} returnKeyType="done" />
+            <TouchableOpacity style={styles.addBtn} onPress={addCustom}><Ionicons name="add" size={22} color="#fff" /></TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+    </View>
   );
 }
 
@@ -245,4 +304,17 @@ const styles = StyleSheet.create({
   reminderText: { flex: 1, fontSize: 12, color: COLORS.textSub },
   testBtn: { backgroundColor: COLORS.purpleDim, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   testBtnText: { fontSize: 11, color: COLORS.purpleLight, fontWeight: '600' },
+  emptyHint: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', paddingHorizontal: 32, marginTop: 20, lineHeight: 19 },
+  fab: { position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center', shadowColor: '#7C3AED', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
+  backdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
+  sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  sheetTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text },
+  sheetSub: { fontSize: 13, color: COLORS.textSub, marginTop: 12, marginBottom: 8 },
+  suggWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  suggChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 1 },
+  suggText: { fontSize: 13, color: COLORS.text, fontWeight: '500' },
+  addRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  addInput: { flex: 1, backgroundColor: COLORS.card, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, color: COLORS.text, fontSize: 15, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  addBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center' },
 });

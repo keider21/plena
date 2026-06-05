@@ -518,10 +518,10 @@ export const useStore = create((set, get) => ({
   },
 
   // ─── ÁREAS (árbol de vida) ───────────────────────────────
-  addArea: async ({ parentId = null, name, color, icon }) => {
+  addArea: async ({ parentId = null, name, color, icon, note }) => {
     const node = {
       id: get()._fid(), name: (name || 'Área').trim(), parentId: parentId || null,
-      color: color || '#7C3AED', icon: icon || 'ellipse', createdAt: today(),
+      color: color || '#7C3AED', icon: icon || 'ellipse', note: note || '', createdAt: today(),
     };
     const areas = [...get().areas, node];
     set({ areas });

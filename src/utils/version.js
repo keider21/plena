@@ -1,7 +1,16 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.07';
+export const APP_VERSION = '0.08';
 
 export const CHANGELOG = [
+  {
+    v: '0.08',
+    fecha: '2026-06-05',
+    cambios: [
+      'Áreas: cada área puede tener una descripción que se muestra al tocarla',
+      'Hábitos: botón + con sugerencias rápidas (Leer, Caminar, Ejercicio, Beber agua, Meditar, Dormir temprano)',
+      'Hábitos: crear hábito personalizado',
+    ],
+  },
   {
     v: '0.07',
     fecha: '2026-06-05',

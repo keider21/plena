@@ -22,6 +22,8 @@ export default function AreasScreen({ navigation }) {
   const [expanded, setExpanded] = useState({});
   const [menu, setMenu] = useState(null);
   const [input, setInput] = useState(null);
+  const [noteOpen, setNoteOpen] = useState({});
+  const toggleNote = (id) => setNoteOpen((n) => ({ ...n, [id]: !n[id] }));
 
   const childrenOf = (pid) => areas.filter((a) => (a.parentId || null) === pid);
   const toggle = (id) => setExpanded((e) => ({ ...e, [id]: !e[id] }));
@@ -35,16 +37,16 @@ export default function AreasScreen({ navigation }) {
   };
   walk(null, 0);
 
-  const openAdd = (parentId) => setInput({ mode: 'add', parentId, text: '', color: PALETTE[Math.floor(Math.random() * PALETTE.length)] });
-  const openRename = (node) => setInput({ mode: 'rename', node, text: node.name, color: node.color });
+  const openAdd = (parentId) => setInput({ mode: 'add', parentId, text: '', note: '', color: PALETTE[Math.floor(Math.random() * PALETTE.length)] });
+  const openRename = (node) => setInput({ mode: 'rename', node, text: node.name, note: node.note || '', color: node.color });
 
   const saveInput = async () => {
     const t = (input.text || '').trim();
     if (!t) return;
     if (input.mode === 'rename') {
-      await updateArea(input.node.id, { name: t });
+      await updateArea(input.node.id, { name: t, note: (input.note || '').trim() });
     } else {
-      await addArea({ parentId: input.parentId, name: t, color: input.color });
+      await addArea({ parentId: input.parentId, name: t, color: input.color, note: (input.note || '').trim() });
       if (input.parentId) setExpanded((e) => ({ ...e, [input.parentId]: true }));
     }
     setInput(null);
@@ -94,22 +96,27 @@ export default function AreasScreen({ navigation }) {
         ) : (
           <View style={styles.tree}>
             {rows.map(({ node, depth, kids }) => (
-              <View key={node.id} style={[styles.row, { marginLeft: depth * 18 }]}>
-                {kids > 0 ? (
-                  <TouchableOpacity onPress={() => toggle(node.id)} style={styles.chev}>
-                    <Ionicons name={expanded[node.id] ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textSub} />
+              <View key={node.id} style={{ marginLeft: depth * 18 }}>
+                <View style={styles.row}>
+                  {kids > 0 ? (
+                    <TouchableOpacity onPress={() => toggle(node.id)} style={styles.chev}>
+                      <Ionicons name={expanded[node.id] ? 'chevron-down' : 'chevron-forward'} size={16} color={COLORS.textSub} />
+                    </TouchableOpacity>
+                  ) : <View style={styles.chev} />}
+                  <View style={[styles.dot, { backgroundColor: node.color }]} />
+                  <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.7} onPress={() => { if (node.note) toggleNote(node.id); else if (kids > 0) toggle(node.id); else setMenu(node); }}>
+                    <Text style={styles.name}>{node.name}</Text>
+                    <Text style={styles.meta}>
+                      {kids > 0 ? `${kids} sub-área${kids > 1 ? 's' : ''}` : 'sin sub-áreas'}
+                      {node.note ? ' · ⓘ descripción' : ''}{node.linkedGoalId ? ' · 🎯' : ''}{node.linkedHabitId ? ' · 🔄' : ''}
+                    </Text>
                   </TouchableOpacity>
-                ) : <View style={styles.chev} />}
-                <View style={[styles.dot, { backgroundColor: node.color }]} />
-                <TouchableOpacity style={{ flex: 1 }} onPress={() => (kids > 0 ? toggle(node.id) : setMenu(node))} activeOpacity={0.7}>
-                  <Text style={styles.name}>{node.name}</Text>
-                  <Text style={styles.meta}>
-                    {kids > 0 ? `${kids} sub-área${kids > 1 ? 's' : ''}` : 'sin sub-áreas'}
-                    {node.linkedGoalId ? ' · 🎯 meta' : ''}{node.linkedHabitId ? ' · 🔄 hábito' : ''}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => openAdd(node.id)} style={styles.iconBtn}><Ionicons name="add" size={20} color={COLORS.purpleLight} /></TouchableOpacity>
-                <TouchableOpacity onPress={() => setMenu(node)} style={styles.iconBtn}><Ionicons name="ellipsis-vertical" size={18} color={COLORS.textSub} /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => openAdd(node.id)} style={styles.iconBtn}><Ionicons name="add" size={20} color={COLORS.purpleLight} /></TouchableOpacity>
+                  <TouchableOpacity onPress={() => setMenu(node)} style={styles.iconBtn}><Ionicons name="ellipsis-vertical" size={18} color={COLORS.textSub} /></TouchableOpacity>
+                </View>
+                {noteOpen[node.id] && node.note ? (
+                  <View style={styles.noteBox}><Text style={styles.noteText}>{node.note}</Text></View>
+                ) : null}
               </View>
             ))}
             <Text style={styles.tip}>Toca el + de cada rama para agregar sub-áreas · ⋮ para más opciones</Text>
@@ -132,7 +139,7 @@ export default function AreasScreen({ navigation }) {
             <MenuItem icon="star-outline" color={COLORS.amber} label="Convertir en meta" onPress={() => convertGoal(menu)} />
             <MenuItem icon="refresh-outline" color={COLORS.green} label="Convertir en hábito" onPress={() => convertHabit(menu)} />
             <MenuItem icon="calendar-outline" color={COLORS.blue} label="Convertir en tarea (hoy)" onPress={() => convertTask(menu)} />
-            <MenuItem icon="create-outline" color={COLORS.textSub} label="Renombrar" onPress={() => { const m = menu; setMenu(null); openRename(m); }} />
+            <MenuItem icon="create-outline" color={COLORS.textSub} label="Editar nombre y descripción" onPress={() => { const m = menu; setMenu(null); openRename(m); }} />
             <MenuItem icon="trash-outline" color={COLORS.red} label="Eliminar" onPress={() => removeNode(menu)} />
           </View>
         </TouchableOpacity>
@@ -152,6 +159,14 @@ export default function AreasScreen({ navigation }) {
               placeholder="Nombre (ej. Empresa, App móvil...)"
               placeholderTextColor={COLORS.textMuted}
               autoFocus
+            />
+            <TextInput
+              style={[styles.inputBox, styles.inputNote]}
+              value={input?.note}
+              onChangeText={(v) => setInput((s) => ({ ...s, note: v }))}
+              placeholder="Descripción (opcional · se ve al tocar el área)"
+              placeholderTextColor={COLORS.textMuted}
+              multiline
             />
             {input?.mode !== 'rename' && (
               <View style={styles.colorRow}>
@@ -194,6 +209,9 @@ const styles = StyleSheet.create({
   sheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 30 },
   sheetTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text, marginBottom: 14 },
   inputBox: { backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: COLORS.text, fontSize: 15, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  inputNote: { marginTop: 10, minHeight: 64, textAlignVertical: 'top', fontSize: 14 },
+  noteBox: { marginLeft: 42, marginTop: -2, marginBottom: 8, backgroundColor: COLORS.bg3, borderRadius: 10, padding: 10, borderLeftWidth: 2, borderLeftColor: COLORS.purpleLight },
+  noteText: { fontSize: 13, color: COLORS.textSub, lineHeight: 19 },
   colorRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 14, marginBottom: 6 },
   colorDot: { width: 30, height: 30, borderRadius: 15 },
   colorDotOn: { borderWidth: 3, borderColor: '#fff' },
