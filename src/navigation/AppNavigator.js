@@ -12,6 +12,7 @@ import CalendarScreen from '../screens/CalendarScreen';
 import HabitosScreen from '../screens/HabitosScreen';
 import MetasScreen from '../screens/MetasScreen';
 import AreasScreen from '../screens/AreasScreen';
+import AsistenteIAScreen from '../screens/AsistenteIAScreen';
 import GoalAssistant from '../screens/GoalAssistant';
 import GoalDetail from '../screens/GoalDetail';
 import FinanzasScreen from '../screens/FinanzasScreen';
@@ -29,6 +30,7 @@ const TAB_ITEMS = [
   { name: 'Metas', component: MetasScreen, icon: 'star-outline', iconActive: 'star' },
   { name: 'Áreas', component: AreasScreen, icon: 'git-branch-outline', iconActive: 'git-branch' },
   { name: 'Finanzas', component: FinanzasScreen, icon: 'wallet-outline', iconActive: 'wallet' },
+  { name: 'IA', component: AsistenteIAScreen, icon: 'sparkles-outline', iconActive: 'sparkles' },
 ];
 
 function MainTabs() {

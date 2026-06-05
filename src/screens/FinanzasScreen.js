@@ -98,12 +98,13 @@ export default function FinanzasScreen({ navigation, route }) {
       id ? await store.updateAccount(id, p) : await store.addAccount(p);
     } else if (modal.type === 'movement') {
       if (num(f.amount) <= 0) return;
+      let res;
       if (f.type === 'pago') {
         if (!f.accountId || !f.cardId) return;
-        await store.addTransaction({ type: 'pago', accountId: f.accountId, cardId: f.cardId, amount: num(f.amount), category: null, note: f.note?.trim() || '' });
+        res = await store.addTransaction({ type: 'pago', accountId: f.accountId, cardId: f.cardId, amount: num(f.amount), category: null, note: f.note?.trim() || '' });
       } else {
         const isCard = f.type === 'gasto' && finance.cards.some((c) => c.id === f.accountId);
-        await store.addTransaction({
+        res = await store.addTransaction({
           type: f.type,
           accountId: isCard ? undefined : f.accountId,
           cardId: isCard ? f.accountId : undefined,
@@ -113,6 +114,7 @@ export default function FinanzasScreen({ navigation, route }) {
           note: f.note?.trim() || '',
         });
       }
+      if (res && res.error) { Alert.alert('No se pudo registrar', res.error); return; }
     } else if (modal.type === 'card') {
       const p = { kind: f.kind || 'credito', bank: f.bank?.trim() || 'Tarjeta', currency: f.currency, balance: num(f.balance), limit: num(f.limit), used: num(f.used), cycleStartDay: num(f.cycleStartDay), cutoffDay: num(f.cutoffDay), payDay: num(f.payDay), minPayment: num(f.minPayment), totalPayment: num(f.totalPayment), interest: num(f.interest) };
       id ? await store.updateCard(id, p) : await store.addCard(p);

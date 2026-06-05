@@ -2,23 +2,28 @@
 // El % de progreso SOLO existe cuando hay indicadores reales (regla del usuario).
 
 export const GOAL_CATEGORIES = [
+  { key: 'monetaria', label: 'Monetaria', color: '#10B981', icon: 'cash-outline' },
   { key: 'personal', label: 'Personal', color: '#7C3AED', icon: 'person-outline' },
-  { key: 'familia', label: 'Familia', color: '#EC4899', icon: 'heart-outline' },
-  { key: 'finanzas', label: 'Finanzas', color: '#10B981', icon: 'wallet-outline' },
-  { key: 'empresa', label: 'Empresa', color: '#F59E0B', icon: 'briefcase-outline' },
-  { key: 'salud', label: 'Salud', color: '#0EA5E9', icon: 'fitness-outline' },
-  { key: 'aprendizaje', label: 'Aprendizaje', color: '#6366F1', icon: 'book-outline' },
-  { key: 'materiales', label: 'Materiales', color: '#A78BFA', icon: 'cube-outline' },
+  { key: 'salud', label: 'Salud', color: '#EF4444', icon: 'fitness-outline' },
+  { key: 'estudio', label: 'Estudio', color: '#0EA5E9', icon: 'book-outline' },
+  { key: 'trabajo', label: 'Trabajo', color: '#F59E0B', icon: 'briefcase-outline' },
 ];
 
 export const catOf = (key) => GOAL_CATEGORIES.find((c) => c.key === key) || GOAL_CATEGORIES[0];
 
 // Devuelve el % (0-100) si hay indicadores; null si no hay (no se muestra progreso).
 export function goalProgress(goal) {
-  const ind = (goal && goal.indicators) || [];
-  if (ind.length === 0) return null;
-  const done = ind.filter((i) => i.done).length;
-  return Math.round((done / ind.length) * 100);
+  if (!goal) return null;
+  if (goal.category === 'monetaria') {
+    const t = goal.targetAmount || 0;
+    if (t > 0) return Math.min(100, Math.round(((goal.currentAmount || 0) / t) * 100));
+    return null;
+  }
+  if (typeof goal.progress === 'number') return Math.max(0, Math.min(100, Math.round(goal.progress)));
+  // compat con metas antiguas (indicadores)
+  const ind = goal.indicators || [];
+  if (ind.length > 0) return Math.round((ind.filter((i) => i.done).length / ind.length) * 100);
+  return null;
 }
 
 const uid = () => Date.now().toString() + Math.random().toString(36).slice(2, 6);
@@ -29,16 +34,13 @@ export function newGoal(partial = {}) {
   return {
     id: uid(),
     title: '',
-    category: 'personal',
-    why: '',
-    benefits: '',
+    description: '',
+    category: 'personal',     // tipo: monetaria/personal/salud/estudio/trabajo
     targetDate: '',
-    currentState: '',
-    actionPlan: [],   // [{id, text, done}]
-    resources: [],    // [{id, text}]
-    references: [],   // [{id, text, url}]
-    obstacles: [],    // [{id, text}]
-    indicators: [],   // [{id, text, done}]
+    targetAmount: 0,          // si es monetaria
+    currentAmount: 0,
+    estimatedTime: '',        // tiempo estimado (texto libre)
+    progress: null,           // % manual para metas no monetarias
     createdAt: new Date().toISOString().slice(0, 10),
     ...partial,
   };

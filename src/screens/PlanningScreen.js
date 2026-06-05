@@ -120,7 +120,19 @@ export default function PlanningScreen({ navigation }) {
     days7.push({ str: format(d, 'yyyy-MM-dd'), short: WEEKDAYS.find((w) => w.n === d.getDay())?.short });
   }
   const enabledActs = activities.filter((a) => a.enabled);
-  const series = enabledActs.map((a) => ({ label: a.name, color: a.color, data: days7.map((d) => log[d.str]?.[a.id]?.pct ?? 0) }));
+  // La gráfica conserva el historial: incluye actividades activas + cualquiera
+  // con registros en los últimos 7 días (aunque se haya editado/borrado).
+  const seriesActs = [...enabledActs];
+  const haveIds = new Set(seriesActs.map((a) => a.id));
+  days7.forEach((d) => Object.keys(log[d.str] || {}).forEach((id) => {
+    if (!haveIds.has(id)) {
+      haveIds.add(id);
+      let meta = null;
+      for (const dd of days7) { const e = log[dd.str]?.[id]; if (e && e.name) { meta = e; break; } }
+      seriesActs.push({ id, name: meta?.name || 'Actividad', color: meta?.color || COLORS.textMuted });
+    }
+  }));
+  const series = seriesActs.map((a) => ({ label: a.name, color: a.color, data: days7.map((d) => log[d.str]?.[a.id]?.pct ?? 0) }));
 
   // sueño
   const sleepDur = ((toMin(schedule.wakeTime) - toMin(schedule.sleepTime)) + 1440) % 1440;

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format, subDays } from 'date-fns';
+import { formatMoney } from '../utils/currency';
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -150,8 +151,13 @@ export const useStore = create((set, get) => ({
   // Registra el cumplimiento de una actividad en un día
   logActivity: async (dateStr, activityId, data) => {
     const planning = get().planning;
+    // Guardamos nombre/color en el registro para que el historial quede congelado
+    // aunque luego se edite o borre la actividad.
+    const act = (planning.activities || []).find((a) => a.id === activityId);
+    const entry = { ...data };
+    if (act) { if (!entry.name) entry.name = act.name; if (!entry.color) entry.color = act.color; }
     const log = { ...(planning.log || {}) };
-    log[dateStr] = { ...(log[dateStr] || {}), [activityId]: data };
+    log[dateStr] = { ...(log[dateStr] || {}), [activityId]: entry };
     const merged = { ...planning, log };
     set({ planning: merged });
     await AsyncStorage.setItem('planning', JSON.stringify(merged));
@@ -396,6 +402,26 @@ export const useStore = create((set, get) => ({
     const f = get().finance;
     const t = { id: get()._fid(), date: today(), ...tx };
     const amt = t.amount || 0;
+
+    // ── Validación de saldo: nunca permitir negativos imposibles ──
+    if (t.type !== 'ingreso') {
+      let available = null; let label = ''; let cur = get().settings.currency;
+      if (t.cardId && t.type === 'gasto') {
+        const c = f.cards.find((x) => x.id === t.cardId);
+        if (c) {
+          cur = c.currency || cur;
+          if (c.kind === 'debito') { available = c.balance || 0; label = c.bank; }
+          else { available = (c.limit || 0) - (c.used || 0); label = `crédito de ${c.bank}`; }
+        }
+      } else if (t.accountId) {
+        const a = f.accounts.find((x) => x.id === t.accountId);
+        if (a) { available = a.balance || 0; label = a.name; cur = a.currency || cur; }
+      }
+      if (available != null && amt - available > 0.005) {
+        return { error: `Saldo insuficiente en ${label}. Disponible: ${formatMoney(available, cur)}.` };
+      }
+    }
+
     const accounts = f.accounts.map(a => {
       if (a.id === t.accountId) {
         // ingreso suma; gasto/transferencia/pago restan de la cuenta origen
@@ -415,6 +441,7 @@ export const useStore = create((set, get) => ({
         })
       : f.cards;
     await get()._saveFinance({ ...f, accounts, cards, transactions: [t, ...f.transactions] });
+    return { success: true };
   },
   deleteTransaction: async (id) => {
     const f = get().finance;

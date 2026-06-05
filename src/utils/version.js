@@ -1,7 +1,26 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.03';
+export const APP_VERSION = '0.05';
 
 export const CHANGELOG = [
+  {
+    v: '0.05',
+    fecha: '2026-06-05',
+    cambios: [
+      'Metas rediseñadas y simples: nombre, descripción, tipo (monetaria/personal/salud/estudio/trabajo), fecha, monto y tiempo',
+      'Las metas monetarias miden tu avance por monto; las demás con un progreso manual',
+      'Se quitó el asistente de preguntas de metas',
+      'Nueva sección "Asistente IA" (interfaz de chat lista; voz y ejecución de acciones llegan después)',
+    ],
+  },
+  {
+    v: '0.04',
+    fecha: '2026-06-05',
+    cambios: [
+      'Integridad de datos: ya no se permiten saldos negativos imposibles (valida antes de gasto/transferencia/pago)',
+      'El historial de los gráficos queda congelado: editar o borrar una actividad ya no borra su avance pasado',
+      'Pago de tarjeta confirmado: se refleja en tarjeta, historial, resumen y balance',
+    ],
+  },
   {
     v: '0.03',
     fecha: '2026-06-04',
