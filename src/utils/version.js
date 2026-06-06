@@ -1,7 +1,15 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.09';
+export const APP_VERSION = '0.10';
 
 export const CHANGELOG = [
+  {
+    v: '0.10',
+    fecha: '2026-06-05',
+    cambios: [
+      'Nuevo asistente de configuración inicial (reemplaza la encuesta): registras cuentas, tarjetas y deudas con sus saldos al empezar',
+      'Todo es omitible y solo aparece una vez',
+    ],
+  },
   {
     v: '0.09',
     fecha: '2026-06-05',
