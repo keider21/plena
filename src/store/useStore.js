@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format, subDays } from 'date-fns';
 import { formatMoney } from '../utils/currency';
+import { loanPending } from '../utils/finance';
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -515,6 +516,39 @@ export const useStore = create((set, get) => ({
   deleteDebt: async (id) => {
     const f = get().finance;
     await get()._saveFinance({ ...f, debts: f.debts.filter(d => d.id !== id) });
+  },
+
+  // ─── PAGOS de deudas y préstamos (integrados con cuentas/historial/reportes) ──
+  payDebt: async (id, amount, accountId) => {
+    const d = get().finance.debts.find((x) => x.id === id);
+    if (!d || amount <= 0) return { error: 'Monto inválido' };
+    if (accountId) {
+      const res = await get().addTransaction({ type: 'gasto', accountId, amount, category: 'Deudas', note: `Pago deuda: ${d.creditor || d.name || ''}`.trim() });
+      if (res && res.error) return res;
+    }
+    await get().updateDebt(id, { paid: (d.paid || 0) + amount });
+    return { success: true };
+  },
+  payLoan: async (id, amount, accountId) => {
+    const l = get().finance.loans.find((x) => x.id === id);
+    if (!l || amount <= 0) return { error: 'Monto inválido' };
+    if (accountId) {
+      const res = await get().addTransaction({ type: 'gasto', accountId, amount, category: 'Deudas', note: `Pago préstamo: ${l.name || ''}`.trim() });
+      if (res && res.error) return res;
+    }
+    const pend = l.pending != null ? l.pending : loanPending(l);
+    await get().updateLoan(id, { pending: Math.max(0, pend - amount) });
+    return { success: true };
+  },
+  addLoanAmount: async (id, amount, accountId) => {
+    const l = get().finance.loans.find((x) => x.id === id);
+    if (!l || amount <= 0) return { error: 'Monto inválido' };
+    if (accountId) {
+      await get().addTransaction({ type: 'ingreso', accountId, amount, category: 'Otros', note: `Préstamo adicional: ${l.name || ''}`.trim() });
+    }
+    const pend = l.pending != null ? l.pending : loanPending(l);
+    await get().updateLoan(id, { pending: pend + amount, amount: (l.amount || 0) + amount });
+    return { success: true };
   },
 
   // ─── ÁREAS (árbol de vida) ───────────────────────────────

@@ -1,7 +1,17 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.11';
+export const APP_VERSION = '0.12';
 
 export const CHANGELOG = [
+  {
+    v: '0.12',
+    fecha: '2026-06-06',
+    cambios: [
+      'Deudas y préstamos: botón "Registrar pago" que baja automáticamente el saldo pendiente',
+      'Préstamos: "Monto adicional" (si te prestan más) actualiza el saldo',
+      'Los pagos se descuentan de la cuenta elegida y aparecen en el historial y los reportes (categoría Deudas)',
+      'Las tarjetas de deuda/préstamo muestran el saldo pendiente y el % pagado',
+    ],
+  },
   {
     v: '0.11',
     fecha: '2026-06-06',

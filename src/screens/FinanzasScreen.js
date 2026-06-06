@@ -57,8 +57,21 @@ export default function FinanzasScreen({ navigation, route }) {
   const [period, setPeriod] = useState('mes');
   const [modal, setModal] = useState(null); // { type, id? }
   const [f, setF] = useState({});
+  const [pay, setPay] = useState(null); // { mode:'debt'|'loan'|'loanAdd', item, amount, accountId }
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+
+  const openPay = (mode, item) => setPay({ mode, item, amount: '', accountId: finance.accounts[0]?.id });
+  const savePay = async () => {
+    const amt = num(pay.amount);
+    if (amt <= 0) { Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.'); return; }
+    let res;
+    if (pay.mode === 'debt') res = await store.payDebt(pay.item.id, amt, pay.accountId);
+    else if (pay.mode === 'loan') res = await store.payLoan(pay.item.id, amt, pay.accountId);
+    else res = await store.addLoanAmount(pay.item.id, amt, pay.accountId);
+    if (res && res.error) { Alert.alert('No se pudo', res.error); return; }
+    setPay(null);
+  };
 
   const openModal = (type, item) => {
     if ((type === 'movement') && finance.accounts.length === 0) {
@@ -169,10 +182,10 @@ export default function FinanzasScreen({ navigation, route }) {
           <Tarjetas finance={finance} onEdit={(c) => openModal('card', c)} onDel={(c) => confirmDel(`la tarjeta "${c.bank}"`, () => store.deleteCard(c.id))} onAdd={() => openModal('card')} onCalendar={(c) => navigation.navigate('CardCalendar', { id: c.id })} />
         )}
         {tab === 'prestamos' && (
-          <Prestamos finance={finance} onEdit={(l) => openModal('loan', l)} onDel={(l) => confirmDel(`el préstamo "${l.name}"`, () => store.deleteLoan(l.id))} onAdd={() => openModal('loan')} />
+          <Prestamos finance={finance} onEdit={(l) => openModal('loan', l)} onDel={(l) => confirmDel(`el préstamo "${l.name}"`, () => store.deleteLoan(l.id))} onAdd={() => openModal('loan')} onPay={(l) => openPay('loan', l)} onAddMore={(l) => openPay('loanAdd', l)} />
         )}
         {tab === 'deudas' && (
-          <Deudas finance={finance} onEdit={(d) => openModal('debt', d)} onDel={(d) => confirmDel(`la deuda "${d.name}"`, () => store.deleteDebt(d.id))} onAdd={() => openModal('debt')} />
+          <Deudas finance={finance} onEdit={(d) => openModal('debt', d)} onDel={(d) => confirmDel(`la deuda "${d.name || d.creditor}"`, () => store.deleteDebt(d.id))} onAdd={() => openModal('debt')} onPay={(d) => openPay('debt', d)} />
         )}
         <View style={{ height: 90 }} />
       </ScrollView>
@@ -311,6 +324,29 @@ export default function FinanzasScreen({ navigation, route }) {
                 <Ionicons name="trash-outline" size={18} color={COLORS.red} />
                 <Text style={styles.delModalText}>Eliminar</Text>
               </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de pago de deuda / préstamo */}
+      <Modal visible={!!pay} transparent animationType="slide" onRequestClose={() => setPay(null)}>
+        <View style={styles.backdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>{pay?.mode === 'loanAdd' ? 'Solicitar monto adicional' : 'Registrar pago'}</Text>
+              <TouchableOpacity onPress={() => setPay(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
+            </View>
+            {pay && (
+              <>
+                <Text style={[styles.fLabel, { marginBottom: 12 }]}>{pay.item.name || pay.item.creditor || ''}</Text>
+                <Field label="Monto"><TextInput style={styles.input} value={pay.amount} onChangeText={(v) => setPay((p) => ({ ...p, amount: v }))} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} autoFocus /></Field>
+                <Field label={pay.mode === 'loanAdd' ? 'Recibir en cuenta (opcional)' : 'Pagar desde (opcional)'}>
+                  <Chips options={[{ key: null, label: 'Sin cuenta' }, ...finance.accounts.map((a) => ({ key: a.id, label: a.name }))]} value={pay.accountId} onChange={(v) => setPay((p) => ({ ...p, accountId: v }))} />
+                </Field>
+                <Text style={styles.payHint}>{pay.mode === 'loanAdd' ? 'Aumenta el saldo del préstamo. Si eliges cuenta, ese dinero se suma ahí.' : 'Baja el saldo pendiente. Si eliges cuenta, se descuenta de ahí y aparece en tus gastos (categoría Deudas).'}</Text>
+                <TouchableOpacity style={styles.saveBtn} onPress={savePay} activeOpacity={0.85}><Text style={styles.saveText}>{pay.mode === 'loanAdd' ? 'Agregar monto' : 'Registrar pago'}</Text></TouchableOpacity>
+              </>
             )}
           </View>
         </View>
@@ -464,35 +500,41 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar }) {
   );
 }
 
-function Prestamos({ finance, onEdit, onDel, onAdd }) {
+function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore }) {
   if (finance.loans.length === 0) {
-    return <EmptyState icon="cash-outline" title="Sin préstamos" subtitle="Registra préstamos (banco, familiar, empresa...) con cuotas, interés y progreso." actionLabel="Agregar préstamo" onAction={onAdd} />;
+    return <EmptyState icon="cash-outline" title="Sin préstamos" subtitle="Registra préstamos (banco, familiar...) con su saldo pendiente y registra pagos." actionLabel="Agregar préstamo" onAction={onAdd} />;
   }
   return (
     <View>
       {finance.loans.map((l) => {
         const t = loanType(l.lenderType);
-        const total = l.installmentsTotal || 0;
-        const paid = l.installmentsPaid || 0;
-        const pct = total ? Math.round((paid / total) * 100) : 0;
+        const pend = loanPending(l);
+        const base = l.amount || (l.installment || 0) * (l.installmentsTotal || 0) || pend;
+        const pct = base > 0 ? Math.min(100, Math.round(((base - pend) / base) * 100)) : 0;
         return (
-          <TouchableOpacity key={l.id} style={styles.bigCard} onPress={() => onEdit(l)} onLongPress={() => onDel(l)} activeOpacity={0.85}>
-            <View style={styles.bigCardHead}>
-              <Ionicons name={t.icon} size={20} color={t.color} />
-              <Text style={styles.bigCardTitle}>{l.name}</Text>
-              <Text style={[styles.bigCardCur, { color: t.color }]}>{t.label}</Text>
+          <View key={l.id} style={styles.bigCard}>
+            <TouchableOpacity onPress={() => onEdit(l)} onLongPress={() => onDel(l)} activeOpacity={0.85}>
+              <View style={styles.bigCardHead}>
+                <Ionicons name={t.icon} size={20} color={t.color} />
+                <Text style={styles.bigCardTitle}>{l.name}</Text>
+                <Text style={[styles.bigCardCur, { color: t.color }]}>{t.label}</Text>
+              </View>
+              <View style={styles.cardUseBg}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: COLORS.green }]} /></View>
+              <View style={styles.cardRow2}>
+                <Text style={styles.cardUsed}>Pagado {pct}%</Text>
+                <Text style={styles.cardAvail}>Falta {formatMoney(pend, l.currency)}</Text>
+              </View>
+              <View style={styles.miniGrid}>
+                <Mini label="Monto" val={l.amount ? formatMoney(l.amount, l.currency) : '—'} />
+                <Mini label="Cuota" val={l.installment ? formatMoney(l.installment, l.currency) : '—'} />
+                <Mini label="Interés" val={l.interest ? `${l.interest}%` : '—'} />
+              </View>
+            </TouchableOpacity>
+            <View style={styles.payRow}>
+              <TouchableOpacity style={styles.payBtn} onPress={() => onPay(l)}><Ionicons name="cash-outline" size={16} color={COLORS.green} /><Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar pago</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.payBtn} onPress={() => onAddMore(l)}><Ionicons name="add-circle-outline" size={16} color={COLORS.amber} /><Text style={[styles.payBtnText, { color: COLORS.amber }]}>Monto adicional</Text></TouchableOpacity>
             </View>
-            <View style={styles.cardUseBg}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: COLORS.green }]} /></View>
-            <View style={styles.cardRow2}>
-              <Text style={styles.cardUsed}>{paid}/{total} cuotas ({pct}%)</Text>
-              <Text style={styles.cardAvail}>Falta {formatMoney(loanPending(l), l.currency)}</Text>
-            </View>
-            <View style={styles.miniGrid}>
-              <Mini label="Cuota" val={formatMoney(l.installment, l.currency)} />
-              <Mini label="Interés" val={l.interest ? `${l.interest}%` : '—'} />
-              <Mini label="Periodo" val={`${l.startDate || '—'}→${l.endDate || '—'}`} />
-            </View>
-          </TouchableOpacity>
+          </View>
         );
       })}
       <Text style={styles.tip}>Toca para editar · mantén presionado para eliminar</Text>
@@ -500,9 +542,9 @@ function Prestamos({ finance, onEdit, onDel, onAdd }) {
   );
 }
 
-function Deudas({ finance, onEdit, onDel, onAdd }) {
+function Deudas({ finance, onEdit, onDel, onAdd, onPay }) {
   if (finance.debts.length === 0) {
-    return <EmptyState icon="alert-circle-outline" title="Sin deudas" subtitle="Registra a quién le debes, monto, prioridad y fecha límite para no perder el control." actionLabel="Agregar deuda" onAction={onAdd} />;
+    return <EmptyState icon="alert-circle-outline" title="Sin deudas" subtitle="Registra a quién le debes, monto y prioridad, y registra tus pagos." actionLabel="Agregar deuda" onAction={onAdd} />;
   }
   return (
     <View>
@@ -510,22 +552,29 @@ function Deudas({ finance, onEdit, onDel, onAdd }) {
         const pr = debtPriority(d.priority);
         const pct = d.amount ? Math.min(100, Math.round(((d.paid || 0) / d.amount) * 100)) : 0;
         const rem = Math.max(0, (d.amount || 0) - (d.paid || 0));
+        const sub = d.name && d.creditor ? `A: ${d.creditor}` : '';
+        const extra = d.concept ? (sub ? ` · ${d.concept}` : d.concept) : '';
         return (
-          <TouchableOpacity key={d.id} style={[styles.bigCard, { borderLeftWidth: 4, borderLeftColor: pr.color }]} onPress={() => onEdit(d)} onLongPress={() => onDel(d)} activeOpacity={0.85}>
-            <View style={styles.bigCardHead}>
-              <Text style={styles.bigCardTitle}>{d.name}</Text>
-              <View style={[styles.prBadge, { backgroundColor: pr.color + '22' }]}><Text style={[styles.prText, { color: pr.color }]}>{pr.label}</Text></View>
+          <View key={d.id} style={[styles.bigCard, { borderLeftWidth: 4, borderLeftColor: pr.color }]}>
+            <TouchableOpacity onPress={() => onEdit(d)} onLongPress={() => onDel(d)} activeOpacity={0.85}>
+              <View style={styles.bigCardHead}>
+                <Text style={styles.bigCardTitle}>{d.name || d.creditor || 'Deuda'}</Text>
+                <View style={[styles.prBadge, { backgroundColor: pr.color + '22' }]}><Text style={[styles.prText, { color: pr.color }]}>{pr.label}</Text></View>
+              </View>
+              {(sub || extra) ? <Text style={styles.listSub}>{sub}{extra}{d.dueDate ? ` · vence ${d.dueDate}` : ''}</Text> : (d.dueDate ? <Text style={styles.listSub}>Vence {d.dueDate}</Text> : null)}
+              <View style={[styles.cardUseBg, { marginTop: 10 }]}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: pr.color }]} /></View>
+              <View style={styles.cardRow2}>
+                <Text style={styles.cardUsed}>Pagado {formatMoney(d.paid || 0, d.currency)} ({pct}%)</Text>
+                <Text style={[styles.cardAvail, { color: COLORS.red }]}>Falta {formatMoney(rem, d.currency)}</Text>
+              </View>
+            </TouchableOpacity>
+            <View style={styles.payRow}>
+              <TouchableOpacity style={styles.payBtn} onPress={() => onPay(d)}><Ionicons name="cash-outline" size={16} color={COLORS.green} /><Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar pago</Text></TouchableOpacity>
             </View>
-            {d.creditor ? <Text style={styles.listSub}>A: {d.creditor}{d.dueDate ? ` · vence ${d.dueDate}` : ''}</Text> : (d.dueDate ? <Text style={styles.listSub}>Vence {d.dueDate}</Text> : null)}
-            <View style={[styles.cardUseBg, { marginTop: 10 }]}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: pr.color }]} /></View>
-            <View style={styles.cardRow2}>
-              <Text style={styles.cardUsed}>Pagado {formatMoney(d.paid, d.currency)} ({pct}%)</Text>
-              <Text style={[styles.cardAvail, { color: COLORS.red }]}>Falta {formatMoney(rem, d.currency)}</Text>
-            </View>
-          </TouchableOpacity>
+          </View>
         );
       })}
-      <Text style={styles.tip}>Toca para editar/registrar pago · mantén presionado para eliminar</Text>
+      <Text style={styles.tip}>Toca para editar · mantén presionado para eliminar</Text>
     </View>
   );
 }
@@ -609,4 +658,8 @@ const styles = StyleSheet.create({
   kindBadge: { backgroundColor: COLORS.purpleDim, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 },
   kindBadgeText: { color: COLORS.purpleLight, fontSize: 11, fontWeight: '700' },
   debitoNote: { fontSize: 13, color: COLORS.textSub, marginTop: 4 },
+  payRow: { flexDirection: 'row', gap: 10, marginTop: 12, paddingTop: 12, borderTopWidth: 0.5, borderTopColor: COLORS.border },
+  payBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: COLORS.bg3 },
+  payBtnText: { fontSize: 13, fontWeight: '700' },
+  payHint: { fontSize: 12, color: COLORS.textMuted, lineHeight: 17, marginBottom: 4 },
 });
