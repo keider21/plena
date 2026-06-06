@@ -1,7 +1,17 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.10';
+export const APP_VERSION = '0.11';
 
 export const CHANGELOG = [
+  {
+    v: '0.11',
+    fecha: '2026-06-06',
+    cambios: [
+      'Encuesta inicial: nueva sección Préstamos (entidad, monto, fecha, cuota, interés, saldo pendiente)',
+      'Encuesta: aviso "tienes datos sin agregar" al avanzar; ya no se pierden datos escritos',
+      'Encuesta: Deudas con más campos (para qué fue, fecha, monto inicial, saldo pendiente, observaciones)',
+      'Pregunta "¿A qué te dedicas?": crea una categoría de ingreso propia (ej. Ingresos por taxi)',
+    ],
+  },
   {
     v: '0.10',
     fecha: '2026-06-05',

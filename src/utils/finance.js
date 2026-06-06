@@ -99,8 +99,26 @@ export function financeStats(transactions, period, ref = new Date()) {
 }
 
 export function loanPending(loan) {
+  // Modelo nuevo: saldo pendiente directo. Compat con el viejo (cuotas).
+  if (loan.pending != null) return Math.max(0, loan.pending);
   const remaining = Math.max(0, (loan.installmentsTotal || 0) - (loan.installmentsPaid || 0));
   return remaining * (loan.installment || 0);
+}
+
+// Ocupación → categoría de ingreso propia (estadísticas más reales)
+export const OCCUPATIONS = [
+  { key: 'taxista', label: 'Taxista', income: 'Ingresos por taxi' },
+  { key: 'comerciante', label: 'Comerciante', income: 'Ventas del negocio' },
+  { key: 'empleado', label: 'Empleado', income: 'Sueldo' },
+  { key: 'independiente', label: 'Independiente', income: 'Ingresos independientes' },
+  { key: 'estudiante', label: 'Estudiante', income: 'Otros' },
+  { key: 'otro', label: 'Otro', income: 'Otros' },
+];
+export const occupationIncome = (key) => (OCCUPATIONS.find((o) => o.key === key) || {}).income || null;
+export function incomeCategories(occupationKey) {
+  const inc = occupationIncome(occupationKey);
+  if (inc && !CATEGORIES.ingreso.includes(inc)) return [inc, ...CATEGORIES.ingreso];
+  return CATEGORIES.ingreso;
 }
 
 export function netWorth(finance) {

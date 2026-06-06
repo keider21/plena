@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   ACCOUNT_TYPES, accountType, LOAN_TYPES, loanType, DEBT_PRIORITIES, debtPriority,
-  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, categoryColor, CARD_KINDS,
+  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, categoryColor, CARD_KINDS, incomeCategories,
 } from '../utils/finance';
 import { purchasePaymentInfo } from '../utils/cardCycle';
 import Dropdown from '../components/Dropdown';
@@ -234,7 +234,7 @@ export default function FinanzasScreen({ navigation, route }) {
                   })()}
                   {(f.type === 'ingreso' || f.type === 'gasto') && (
                     <Field label="Categoría">
-                      <Dropdown options={(CATEGORIES[f.type] || CATEGORIES.gasto).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
+                      <Dropdown options={(f.type === 'ingreso' ? incomeCategories(store.userProfile?.occupation) : (CATEGORIES[f.type] || CATEGORIES.gasto)).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
                     </Field>
                   )}
                   <Field label="Nota (opcional)"><TextInput style={styles.input} value={f.note} onChangeText={(v) => set('note', v)} placeholder="Detalle..." placeholderTextColor={COLORS.textMuted} /></Field>
