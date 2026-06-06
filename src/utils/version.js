@@ -1,7 +1,16 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.08';
+export const APP_VERSION = '0.09';
 
 export const CHANGELOG = [
+  {
+    v: '0.09',
+    fecha: '2026-06-05',
+    cambios: [
+      'Nueva pantalla "Notificaciones y permisos" (Perfil): activar notificaciones, permitir segundo plano (batería), alarmas exactas, abrir ajustes y probar',
+      'Permisos nativos agregados: alarmas exactas, ignorar optimización de batería, pantalla completa, wake lock',
+      'Requiere regenerar el dev build para que los permisos nativos tomen efecto',
+    ],
+  },
   {
     v: '0.08',
     fecha: '2026-06-05',

@@ -126,6 +126,33 @@ export async function cancelAll() {
   try { await Notifications.cancelAllScheduledNotificationsAsync(); } catch (e) {}
 }
 
+// ─── Permisos del sistema (requieren dev build con expo-intent-launcher) ──
+const PKG = 'com.vidaplena.app';
+const IL = () => require('expo-intent-launcher');
+
+export async function getNotifPermission() {
+  if (isWeb) return 'web';
+  try { const { status } = await Notifications.getPermissionsAsync(); return status; } catch (e) { return 'desconocido'; }
+}
+export async function requestNotifPermission() {
+  if (isWeb) return 'web';
+  try { const { status } = await Notifications.requestPermissionsAsync(); return status; } catch (e) { return 'error'; }
+}
+export async function requestIgnoreBattery() {
+  if (Platform.OS !== 'android') return;
+  const il = IL();
+  try { await il.startActivityAsync('android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS', { data: 'package:' + PKG }); }
+  catch (e) { await il.startActivityAsync('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS'); }
+}
+export async function requestExactAlarm() {
+  if (Platform.OS !== 'android') return;
+  await IL().startActivityAsync('android.settings.REQUEST_SCHEDULE_EXACT_ALARM', { data: 'package:' + PKG });
+}
+export async function openAppNotifSettings() {
+  if (Platform.OS !== 'android') return;
+  await IL().startActivityAsync('android.settings.APP_NOTIFICATION_SETTINGS', { extra: { 'android.provider.extra.APP_PACKAGE': PKG } });
+}
+
 // ─── Reprogramación masiva (hábitos + actividades del horario) ──
 export async function rescheduleAll({ habits = [], schedule: sch, activities = [], placementsByDay = null } = {}) {
   if (isWeb) return;

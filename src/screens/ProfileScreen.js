@@ -26,7 +26,7 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const MENU = [
-    { icon: 'notifications-outline', label: 'Notificaciones y recordatorios', color: COLORS.purple },
+    { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.purple, onPress: () => navigation.navigate('Permisos') },
     { icon: 'barbell-outline', label: 'Editar mis hábitos', color: COLORS.green, onPress: () => navigation.navigate('Habitos') },
     { icon: 'star-outline', label: 'Editar mis metas', color: COLORS.amber, onPress: () => navigation.navigate('Metas') },
     { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue },

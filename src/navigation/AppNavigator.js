@@ -19,6 +19,7 @@ import FinanzasScreen from '../screens/FinanzasScreen';
 import CardCalendar from '../screens/CardCalendar';
 import MentalidadScreen from '../screens/MentalidadScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import PermisosScreen from '../screens/PermisosScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -68,6 +69,7 @@ export default function AppNavigator() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
       <Stack.Screen name="Profile" component={ProfileScreen} />
+      <Stack.Screen name="Permisos" component={PermisosScreen} />
       <Stack.Screen name="PlanningWizard" component={PlanningWizard} />
       <Stack.Screen name="Calendar" component={CalendarScreen} />
       <Stack.Screen name="GoalAssistant" component={GoalAssistant} />
