@@ -142,6 +142,12 @@ export function incomeCategories(occupationKey) {
   return CATEGORIES.ingreso;
 }
 
+// Categorías de gasto personalizadas por usuario (persistidas en settings.customGastoCategories)
+export function userCategories(settings) {
+  const custom = (settings && settings.customGastoCategories) || [];
+  return [...CATEGORIES.gasto, ...custom];
+}
+
 export function netWorth(finance) {
   const accounts = (finance.accounts || []).reduce((a, x) => a + (x.balance || 0), 0);
   const debitBal = (finance.cards || []).filter((c) => c.kind === 'debito').reduce((a, c) => a + (c.balance || 0), 0);

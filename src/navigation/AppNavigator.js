@@ -17,6 +17,7 @@ import GoalAssistant from '../screens/GoalAssistant';
 import GoalDetail from '../screens/GoalDetail';
 import FinanzasScreen from '../screens/FinanzasScreen';
 import CardCalendar from '../screens/CardCalendar';
+import HabitsOnboardingScreen from '../screens/HabitsOnboardingScreen';
 import MentalidadScreen from '../screens/MentalidadScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import PermisosScreen from '../screens/PermisosScreen';
@@ -75,6 +76,7 @@ export default function AppNavigator() {
       <Stack.Screen name="GoalAssistant" component={GoalAssistant} />
       <Stack.Screen name="GoalDetail" component={GoalDetail} />
       <Stack.Screen name="CardCalendar" component={CardCalendar} />
+      <Stack.Screen name="HabitsOnboarding" component={HabitsOnboardingScreen} />
     </Stack.Navigator>
   );
 }

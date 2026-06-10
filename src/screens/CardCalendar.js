@@ -55,6 +55,20 @@ export default function CardCalendar({ navigation, route }) {
           <View style={{ flex: 1 }}>
             <Text style={styles.cardName}>{card.bank}</Text>
             <Text style={styles.cardUse}>Usado {formatMoney(card.used, card.currency)} de {formatMoney(card.limit, card.currency)}</Text>
+            {card.limit > 0 && (() => {
+              const pct = Math.min(100, Math.round(((card.used || 0) / card.limit) * 100));
+              const col = pct >= 80 ? COLORS.red : pct >= 50 ? COLORS.amber : COLORS.green;
+              return (
+                <View style={{ marginTop: 8 }}>
+                  <View style={{ height: 6, backgroundColor: COLORS.bg3, borderRadius: 3, overflow: 'hidden' }}>
+                    <View style={{ height: 6, width: `${pct}%`, backgroundColor: col, borderRadius: 3 }} />
+                  </View>
+                  <Text style={{ fontSize: 11, color: col, fontWeight: '700', marginTop: 4 }}>
+                    {pct}% usado {pct >= 80 ? ' ⚠️ Ojo' : pct >= 50 ? ' ⚠' : ' ✓'}
+                  </Text>
+                </View>
+              );
+            })()}
           </View>
         </View>
 

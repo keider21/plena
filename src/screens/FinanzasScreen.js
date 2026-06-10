@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
@@ -9,7 +10,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   ACCOUNT_TYPES, accountType, LOAN_TYPES, loanType, DEBT_PRIORITIES, debtPriority,
-  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, loanBreakdown, categoryColor, CARD_KINDS, incomeCategories,
+  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, loanBreakdown, categoryColor, CARD_KINDS, incomeCategories, userCategories,
 } from '../utils/finance';
 import { purchasePaymentInfo } from '../utils/cardCycle';
 import Dropdown from '../components/Dropdown';
@@ -62,7 +63,10 @@ export default function FinanzasScreen({ navigation, route }) {
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
-  const openPay = (mode, item) => setPay({ mode, item, amount: '', accountId: finance.accounts[0]?.id });
+  const openPay = (mode, item) => {
+    Haptics.selectionAsync().catch(() => {});
+    setPay({ mode, item, amount: '', accountId: finance.accounts[0]?.id });
+  };
   const savePay = async () => {
     const amt = num(pay.amount);
     if (amt <= 0) { Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.'); return; }
@@ -71,16 +75,38 @@ export default function FinanzasScreen({ navigation, route }) {
       const due = pay.item.used || 0;
       if (amt - due > 0.005) { Alert.alert('Pago excesivo', `Solo debes ${formatMoney(due, pay.item.currency || cur)}. No puedes pagar más.`); return; }
       if (!pay.accountId) { Alert.alert('Elige una cuenta', 'Para registrar el pago necesitás una cuenta de origen.'); return; }
-      const res = await store.addTransaction({ type: 'pago', accountId: pay.accountId, cardId: pay.item.id, amount: amt, category: null, note: 'Pago a tarjeta' });
-      if (res && res.error) { Alert.alert('No se pudo', res.error); return; }
-      setPay(null);
-      return;
     }
+    // Confirmación háptica + visual si el monto es grande (> 100)
+    if (amt >= 100) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+      return new Promise((resolve) => {
+        Alert.alert(
+          'Confirmar pago',
+          `Vas a registrar un pago de ${formatMoney(amt, pay.item.currency || cur)}${pay.item?.name || pay.item?.bank || pay.item?.creditor ? ` a ${pay.item.name || pay.item.bank || pay.item.creditor}` : ''}.\n\n¿Confirmás?`,
+          [
+            { text: 'Cancelar', style: 'cancel', onPress: () => resolve() },
+            { text: 'Confirmar', style: 'default', onPress: async () => { await doSavePay(amt); resolve(); } },
+          ]
+        );
+      });
+    } else {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      await doSavePay(amt);
+    }
+  };
+  const doSavePay = async (amt) => {
     let res;
-    if (pay.mode === 'debt') res = await store.payDebt(pay.item.id, amt, pay.accountId);
-    else if (pay.mode === 'loan') res = await store.payLoan(pay.item.id, amt, pay.accountId);
-    else res = await store.addLoanAmount(pay.item.id, amt, pay.accountId);
+    if (pay.mode === 'card') {
+      res = await store.addTransaction({ type: 'pago', accountId: pay.accountId, cardId: pay.item.id, amount: amt, category: null, note: 'Pago a tarjeta' });
+    } else if (pay.mode === 'debt') {
+      res = await store.payDebt(pay.item.id, amt, pay.accountId);
+    } else if (pay.mode === 'loan') {
+      res = await store.payLoan(pay.item.id, amt, pay.accountId);
+    } else {
+      res = await store.addLoanAmount(pay.item.id, amt, pay.accountId);
+    }
     if (res && res.error) { Alert.alert('No se pudo', res.error); return; }
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setPay(null);
   };
 
@@ -258,7 +284,7 @@ export default function FinanzasScreen({ navigation, route }) {
                   })()}
                   {(f.type === 'ingreso' || f.type === 'gasto') && (
                     <Field label="Categoría">
-                      <Dropdown options={(f.type === 'ingreso' ? incomeCategories(store.userProfile?.occupation) : (CATEGORIES[f.type] || CATEGORIES.gasto)).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
+                      <Dropdown options={(f.type === 'ingreso' ? incomeCategories(store.userProfile?.occupation) : userCategories(settings)).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
                     </Field>
                   )}
                   <Field label="Nota (opcional)"><TextInput style={styles.input} value={f.note} onChangeText={(v) => set('note', v)} placeholder="Detalle..." placeholderTextColor={COLORS.textMuted} /></Field>
@@ -429,7 +455,14 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
   const maxCat = cats.length ? cats[0][1] : 1;
   const accName = (id) => finance.accounts.find((a) => a.id === id)?.name || '—';
   const srcName = (t) => (t.cardId ? '💳 ' + (finance.cards.find((c) => c.id === t.cardId)?.bank || 'Tarjeta') : accName(t.accountId));
-  const recent = finance.transactions.slice(0, 10);
+  const [search, setSearch] = useState('');
+  const recent = finance.transactions
+    .filter((t) => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (t.note || '').toLowerCase().includes(q) || (t.category || '').toLowerCase().includes(q) || srcName(t).toLowerCase().includes(q);
+    })
+    .slice(0, 15);
 
   return (
     <View>
@@ -464,6 +497,11 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
       )}
 
       <Text style={styles.secTitle}>Últimos movimientos</Text>
+      <View style={styles.searchBox}>
+        <Ionicons name="search-outline" size={16} color={COLORS.textMuted} />
+        <TextInput style={styles.searchInput} value={search} onChangeText={setSearch} placeholder="Buscar movimiento, categoría o cuenta…" placeholderTextColor={COLORS.textMuted} />
+        {search.length > 0 && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color={COLORS.textMuted} /></TouchableOpacity>}
+      </View>
       {recent.length === 0 ? <Text style={styles.hint}>Aún no registras movimientos. Usa el botón +.</Text> : (
         <View style={styles.card}>
           {recent.map((t) => {
@@ -788,4 +826,7 @@ const styles = StyleSheet.create({
   histAmt: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   histSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   histDate: { fontSize: 12, color: COLORS.textSub, fontWeight: '600' },
+  // estilos para búsqueda
+  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 0.5, borderColor: COLORS.cardBorder, marginBottom: 10 },
+  searchInput: { flex: 1, color: COLORS.text, fontSize: 13, paddingVertical: 0 },
 });

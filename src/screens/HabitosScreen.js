@@ -9,16 +9,38 @@ import { es } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
 import { COLORS, CAT_COLORS } from '../utils/theme';
 import { scheduleHabitReminder, cancelHabitReminder, sendTestNotification } from '../utils/notifications';
+import * as Haptics from 'expo-haptics';
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
 const SUGGESTIONS = [
-  { name: 'Leer', icon: 'book', color: '#6366F1', category: 'mente' },
-  { name: 'Caminar', icon: 'walk', color: '#10B981', category: 'salud' },
+  // Salud
+  { name: 'Caminar 30 min', icon: 'walk', color: '#10B981', category: 'salud' },
   { name: 'Ejercicio', icon: 'barbell', color: '#EF4444', category: 'salud' },
-  { name: 'Beber agua', icon: 'water', color: '#0EA5E9', category: 'salud' },
-  { name: 'Meditar', icon: 'leaf', color: '#A78BFA', category: 'mente' },
+  { name: 'Beber agua (2L)', icon: 'water', color: '#0EA5E9', category: 'salud' },
   { name: 'Dormir temprano', icon: 'moon', color: '#7C3AED', category: 'salud' },
+  { name: 'Estiramientos', icon: 'body', color: '#F97316', category: 'salud' },
+  { name: 'Comer 5 frutas/verduras', icon: 'nutrition', color: '#10B981', category: 'salud' },
+  // Mente
+  { name: 'Leer 20 min', icon: 'book', color: '#6366F1', category: 'mente' },
+  { name: 'Meditar 10 min', icon: 'leaf', color: '#A78BFA', category: 'mente' },
+  { name: 'Escribir diario', icon: 'create', color: '#EC4899', category: 'mente' },
+  { name: 'Aprender algo nuevo', icon: 'school', color: '#F59E0B', category: 'mente' },
+  { name: 'Sin redes 1h', icon: 'phone-portrait-outline', color: '#EF4444', category: 'mente' },
+  // Familia
+  { name: 'Llamar a un ser querido', icon: 'call', color: '#EC4899', category: 'familia' },
+  { name: 'Tiempo con mis hijos', icon: 'people', color: '#F472B6', category: 'familia' },
+  { name: 'Cena en familia', icon: 'restaurant', color: '#FB7185', category: 'familia' },
+  // Empresa / Negocio
+  { name: 'Revisar el carro', icon: 'car-sport', color: '#F59E0B', category: 'empresa' },
+  { name: 'Hacer taxi más temprano', icon: 'car', color: '#0EA5E9', category: 'empresa' },
+  { name: 'Publicar contenido', icon: 'megaphone', color: '#7C3AED', category: 'empresa' },
+  { name: 'Revisar ganancias del día', icon: 'trending-up', color: '#10B981', category: 'empresa' },
+  { name: 'Atender un cliente', icon: 'briefcase', color: '#6366F1', category: 'empresa' },
+  // Finanzas
+  { name: 'Revisar gastos del día', icon: 'wallet', color: '#14B8A6', category: 'finanzas' },
+  { name: 'Ahorrar S/10', icon: 'cash', color: '#10B981', category: 'finanzas' },
+  { name: 'Actualizar presupuesto', icon: 'calculator', color: '#0EA5E9', category: 'finanzas' },
 ];
 
 function MiniChart({ data, color }) {
@@ -168,6 +190,7 @@ export default function HabitosScreen() {
   const handleLog = (habitId, status) => {
     const habit = habits.find(h => h.id === habitId);
     if (!habit) return;
+    Haptics.impactAsync(status === 'done' ? Haptics.ImpactFeedbackStyle.Medium : Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     logHabit(habitId, status);
   };
 
