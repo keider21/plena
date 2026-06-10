@@ -180,50 +180,23 @@ export default function DashboardScreen({ navigation }) {
       </View>
 
       <View style={styles.section}>
-        <View style={styles.sectionHead}>
-          <Text style={styles.sectionTitle}>Últimos movimientos</Text>
-          <TouchableOpacity onPress={() => navigation.navigate('Finanzas')}>
-            <Text style={styles.sectionLink}>Ver todos</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.searchBox}>
-          <Ionicons name="search-outline" size={16} color={COLORS.textMuted} />
-          <TextInput
-            style={styles.searchInput}
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Buscar movimiento o categoría…"
-            placeholderTextColor={COLORS.textMuted}
-          />
-          {search.length > 0 && (
-            <TouchableOpacity onPress={() => setSearch('')}>
-              <Ionicons name="close-circle" size={18} color={COLORS.textMuted} />
-            </TouchableOpacity>
-          )}
-        </View>
-        {recentTxs.length === 0 ? (
-          <Text style={styles.emptyHint}>
-            {search ? `Sin movimientos con “${search}”.` : 'Aún no registras movimientos. Tocá +.'}
-          </Text>
-        ) : (
-          <View style={styles.txList}>
-            {recentTxs.map((t) => {
-              const sign = t.type === 'ingreso' ? '+' : t.type === 'gasto' || t.type === 'pago' ? '-' : '↔';
-              const col = t.type === 'ingreso' ? COLORS.green : t.type === 'gasto' || t.type === 'pago' ? COLORS.red : COLORS.blue;
-              const ic = t.type === 'ingreso' ? 'arrow-down-circle-outline' : t.type === 'gasto' ? 'arrow-up-circle-outline' : t.type === 'pago' ? 'card-outline' : 'swap-horizontal-outline';
-              return (
-                <View key={t.id} style={styles.txRow}>
-                  <Ionicons name={ic} size={18} color={col} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.txTitle} numberOfLines={1}>{t.note || t.category || t.type}</Text>
-                    <Text style={styles.txSub}>{t.category || t.type} · {t.date}</Text>
-                  </View>
-                  <Text style={[styles.txAmt, { color: col }]}>{sign}{formatMoney(t.amount, cur)}</Text>
-                </View>
-              );
-            })}
+        <Text style={styles.sectionTitle}>Finanzas del mes</Text>
+        <View style={styles.finGrid}>
+          <View style={[styles.finCard, { borderLeftColor: COLORS.green }]}>
+            <Text style={styles.finLabel}>Ingresos</Text>
+            <Text style={[styles.finVal, { color: COLORS.green }]}>{formatMoney(finance.ingresos, cur)}</Text>
           </View>
-        )}
+          <View style={[styles.finCard, { borderLeftColor: COLORS.red }]}>
+            <Text style={styles.finLabel}>Gastos</Text>
+            <Text style={[styles.finVal, { color: COLORS.red }]}>{formatMoney(finance.gastos, cur)}</Text>
+          </View>
+          <View style={[styles.finCard, { borderLeftColor: COLORS.purpleLight }]}>
+            <Text style={styles.finLabel}>Balance</Text>
+            <Text style={[styles.finVal, { color: finance.balance >= 0 ? COLORS.green : COLORS.red }]}>
+              {finance.balance >= 0 ? '+' : ''}{formatMoney(finance.balance, cur)}
+            </Text>
+          </View>
+        </View>
       </View>
 
       <View style={{ height: 90 }} />

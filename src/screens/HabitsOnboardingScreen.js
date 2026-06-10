@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, TextInput, Animated } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
-import { formatMoney } from '../utils/currency';
-import { format } from 'date-fns';
-import { es } from 'date-fns/locale';
-import EmptyState from '../components/EmptyState';
 
 const AREAS = [
   { key: 'salud', label: 'Salud', icon: 'heart', color: '#EF4444' },
@@ -60,7 +56,7 @@ const SUGGESTIONS = {
 const STEP_COUNT = 3;
 
 export default function HabitsOnboardingScreen({ navigation }) {
-  const { addHabit, saveHabits, habits } = useStore();
+  const { addHabit } = useStore();
   const [step, setStep] = useState(0);
   const [area, setArea] = useState(null);
   const [time, setTime] = useState(null);
