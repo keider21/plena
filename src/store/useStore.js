@@ -471,9 +471,9 @@ export const useStore = create((set, get) => ({
     const cards = t.cardId
       ? f.cards.map(c => {
           if (c.id !== t.cardId) return c;
-          if (t.type === 'pago') return { ...c, used: (c.used || 0) + amt };
+          if (t.type === 'pago') return { ...c, used: (c.used || 0) + amt };        // deshacer pago → restaura lo usado
           if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) + amt };
-          return { ...c, used: Math.max(0, (c.used || 0) - amt) };
+          return { ...c, used: Math.max(0, (c.used || 0) - amt) };                  // deshacer gasto crédito → libera línea
         })
       : f.cards;
     await get()._saveFinance({ ...f, accounts, cards, transactions: f.transactions.filter(x => x.id !== id) });

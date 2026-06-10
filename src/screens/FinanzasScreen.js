@@ -179,7 +179,7 @@ export default function FinanzasScreen({ navigation, route }) {
             onEdit={(a) => openModal('account', a)} onDel={(a) => confirmDel(`la cuenta "${a.name}"`, () => store.deleteAccount(a.id))} />
         )}
         {tab === 'tarjetas' && (
-          <Tarjetas finance={finance} onEdit={(c) => openModal('card', c)} onDel={(c) => confirmDel(`la tarjeta "${c.bank}"`, () => store.deleteCard(c.id))} onAdd={() => openModal('card')} onCalendar={(c) => navigation.navigate('CardCalendar', { id: c.id })} />
+          <Tarjetas finance={finance} onEdit={(c) => openModal('card', c)} onDel={(c) => confirmDel(`la tarjeta "${c.bank}"`, () => store.deleteCard(c.id))} onAdd={() => openModal('card')} onCalendar={(c) => navigation.navigate('CardCalendar', { id: c.id })} onPay={(c) => openPay('card', c)} />
         )}
         {tab === 'prestamos' && (
           <Prestamos finance={finance} onEdit={(l) => openModal('loan', l)} onDel={(l) => confirmDel(`el préstamo "${l.name}"`, () => store.deleteLoan(l.id))} onAdd={() => openModal('loan')} onPay={(l) => openPay('loan', l)} onAddMore={(l) => openPay('loanAdd', l)} />
@@ -334,17 +334,24 @@ export default function FinanzasScreen({ navigation, route }) {
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
             <View style={styles.sheetHead}>
-              <Text style={styles.sheetTitle}>{pay?.mode === 'loanAdd' ? 'Solicitar monto adicional' : 'Registrar pago'}</Text>
+              <Text style={styles.sheetTitle}>{pay?.mode === 'loanAdd' ? 'Solicitar monto adicional' : pay?.mode === 'card' ? `Pagar: ${pay?.item?.bank || 'Tarjeta'}` : 'Registrar pago'}</Text>
               <TouchableOpacity onPress={() => setPay(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
             </View>
             {pay && (
               <>
-                <Text style={[styles.fLabel, { marginBottom: 12 }]}>{pay.item.name || pay.item.creditor || ''}</Text>
+                <Text style={[styles.fLabel, { marginBottom: 12 }]}>{pay.item.name || pay.item.creditor || pay.item.bank || ''}</Text>
+                {pay.mode === 'card' && (
+                  <View style={[styles.payNote, { borderColor: COLORS.purple + '88', marginBottom: 14 }]}>
+                    <Text style={[styles.payNoteText, { color: COLORS.purpleLight }]}>
+                      Debes {formatMoney(pay.item.used || 0, pay.item.currency)} · Disponible para pagar: {formatMoney(pay.item.used || 0, pay.item.currency)}
+                    </Text>
+                  </View>
+                )}
                 <Field label="Monto"><TextInput style={styles.input} value={pay.amount} onChangeText={(v) => setPay((p) => ({ ...p, amount: v }))} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} autoFocus /></Field>
                 <Field label={pay.mode === 'loanAdd' ? 'Recibir en cuenta (opcional)' : 'Pagar desde (opcional)'}>
                   <Chips options={[{ key: null, label: 'Sin cuenta' }, ...finance.accounts.map((a) => ({ key: a.id, label: a.name }))]} value={pay.accountId} onChange={(v) => setPay((p) => ({ ...p, accountId: v }))} />
                 </Field>
-                <Text style={styles.payHint}>{pay.mode === 'loanAdd' ? 'Aumenta el saldo del préstamo. Si eliges cuenta, ese dinero se suma ahí.' : 'Baja el saldo pendiente. Si eliges cuenta, se descuenta de ahí y aparece en tus gastos (categoría Deudas).'}</Text>
+                <Text style={styles.payHint}>{pay.mode === 'loanAdd' ? 'Aumenta el saldo del préstamo. Si eliges cuenta, ese dinero se suma ahí.' : pay.mode === 'card' ? 'Descuenta del saldo de la tarjeta y de la cuenta elegida. Aparece como gasto en tu historial.' : 'Baja el saldo pendiente. Si eliges cuenta, se descuenta de ahí y aparece en tus gastos (categoría Deudas).'}</Text>
                 <TouchableOpacity style={styles.saveBtn} onPress={savePay} activeOpacity={0.85}><Text style={styles.saveText}>{pay.mode === 'loanAdd' ? 'Agregar monto' : 'Registrar pago'}</Text></TouchableOpacity>
               </>
             )}
@@ -449,7 +456,7 @@ function Cuentas({ finance, cur, onAdd, onMove, onEdit, onDel }) {
   );
 }
 
-function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar }) {
+function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay }) {
   if (finance.cards.length === 0) {
     return <EmptyState icon="card-outline" title="Sin tarjetas" subtitle="Agrega tus tarjetas de crédito para controlar línea, uso, fechas de corte/pago e intereses." actionLabel="Agregar tarjeta" onAction={onAdd} />;
   }
@@ -488,6 +495,12 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar }) {
                   <Text style={styles.cardCalText}>Calendario de compras y pagos</Text>
                   <Ionicons name="chevron-forward" size={16} color={COLORS.purpleLight} />
                 </TouchableOpacity>
+                {c.used > 0 && (
+                  <TouchableOpacity style={[styles.payBtn, { marginTop: 10 }]} onPress={() => onPay(c)} activeOpacity={0.85}>
+                    <Ionicons name="card-outline" size={16} color={COLORS.green} />
+                    <Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar pago a tarjeta</Text>
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               <Text style={styles.debitoNote}>Saldo: {formatMoney(c.balance, c.currency)}</Text>
