@@ -242,12 +242,88 @@ export function buildDayTable(schedule, weekday, activities, gapThreshold = 30) 
 
 // Tabla del día desde INSTANCIAS concretas (lo que el usuario fijó para ESE día)
 export function buildDayWith(schedule, weekday, instances, gapThreshold = 30) {
-  const placed = (instances || []).map((it) => ({
-    start: toMin(it.start), end: toMin(it.end), label: it.name,
-    icon: it.icon || 'ellipse-outline', color: it.color || '#7C3AED',
-    type: 'activity', activityId: it.activityId || it.id, instanceId: it.id,
-  }));
-  return assembleDay(schedule, weekday, placed, gapThreshold);
+  // Primero, overrides de bloques fijos SOLO para hoy (desayuno, cena, trabajo, etc.)
+  const overrides = (instances || []).filter((it) => it.kind === 'fixedOverride');
+  const activityInstances = (instances || []).filter((it) => it.kind !== 'fixedOverride');
+
+  // Bloques originales (plantilla) para ese día
+  const busyOriginal = getBusyBlocks(schedule, weekday);
+  // Quitamos los bloques que tengan override y los reemplazamos por los del override
+  const busy = busyOriginal
+    .filter((b) => !overrides.some((o) => o.type === (b.type === 'work' ? 'fixed' : b.type === 'meal' ? 'fixed' : b.type === 'nap' ? 'fixed' : b.type)))
+    .map((b) => {
+      const match = overrides.find((o) => {
+        if (o.type === 'fixed') return true; // override global
+        return false;
+      });
+      if (!match) return b;
+      return { ...b, start: toMin(match.start), end: toMin(match.end), label: match.label || b.label, icon: match.icon || b.icon, color: match.color || b.color };
+    });
+
+  // Los overrides específicos (cambiar nombre/hora de un bloque en particular) se aplican como colocados
+  const overriddenPlaced = overrides
+    .filter((o) => o.type !== 'fixed')
+    .map((o) => ({
+      start: toMin(o.start),
+      end: toMin(o.end),
+      label: o.label,
+      icon: o.icon,
+      color: o.color,
+      type: 'fixed',
+      activityId: null,
+    }));
+
+  const placed = [
+    ...overriddenPlaced,
+    ...activityInstances.map((it) => ({
+      start: toMin(it.start), end: toMin(it.end), label: it.name,
+      icon: it.icon || 'ellipse-outline', color: it.color || '#7C3AED',
+      type: 'activity', activityId: it.activityId || it.id, instanceId: it.id,
+    })),
+  ];
+  return assembleDayWith(schedule, weekday, busy, placed, gapThreshold);
+}
+
+// Variante que recibe los busy blocks ya calculados (porque pueden venir de overrides)
+function assembleDayWith(schedule, weekday, busy, placedActivities, gapThreshold = 30) {
+  if (!schedule) return { segments: [], freeReal: 0, holesCount: 0, holesMin: 0 };
+  const wake = toMin(schedule.wakeTime);
+  let sleep = toMin(schedule.sleepTime);
+  if (sleep <= wake) sleep += 1440;
+
+  const norm = (b) => {
+    let s = b.start;
+    let e = b.end;
+    if (s < wake) s += 1440;
+    if (e <= b.start) e += 1440;
+    else if (e < wake) e += 1440;
+    return { ...b, start: s, end: e };
+  };
+
+  const busyN = (busy || []).map(norm);
+  const placed = (placedActivities || []).map(norm);
+  const occ = [...busyN, ...placed].sort((a, b) => a.start - b.start);
+
+  const segments = [];
+  let cursor = wake;
+  for (const o of occ) {
+    if (o.end <= cursor) continue;
+    if (o.start > cursor) {
+      const dur = Math.min(o.start, sleep) - cursor;
+      if (dur > 0) segments.push({ start: cursor, end: cursor + dur, duration: dur, type: 'hole', label: 'Hueco' });
+    }
+    const s = Math.max(o.start, cursor);
+    const e = Math.min(o.end, sleep);
+    if (e > s) segments.push({ ...o, start: s, end: e, duration: e - s });
+    cursor = Math.max(cursor, o.end);
+    if (cursor >= sleep) break;
+  }
+  if (cursor < sleep) {
+    const dur = sleep - cursor;
+    segments.push({ start: cursor, end: sleep, duration: dur, type: 'hole', label: 'Hueco' });
+  }
+  const holes = segments.filter((s) => s.type === 'hole');
+  return { segments, freeReal: 0, holesCount: holes.length, holesMin: holes.reduce((a, s) => a + s.duration, 0) };
 }
 
 // Convierte la plantilla de un día en instancias editables (snapshot)

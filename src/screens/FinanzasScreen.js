@@ -9,7 +9,7 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   ACCOUNT_TYPES, accountType, LOAN_TYPES, loanType, DEBT_PRIORITIES, debtPriority,
-  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, categoryColor, CARD_KINDS, incomeCategories,
+  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, loanBreakdown, categoryColor, CARD_KINDS, incomeCategories,
 } from '../utils/finance';
 import { purchasePaymentInfo } from '../utils/cardCycle';
 import Dropdown from '../components/Dropdown';
@@ -58,6 +58,7 @@ export default function FinanzasScreen({ navigation, route }) {
   const [modal, setModal] = useState(null); // { type, id? }
   const [f, setF] = useState({});
   const [pay, setPay] = useState(null); // { mode:'debt'|'loan'|'loanAdd', item, amount, accountId }
+  const [historyFor, setHistoryFor] = useState(null); // { kind:'debt'|'loan'|'card', refId, label }
 
   const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
 
@@ -179,13 +180,13 @@ export default function FinanzasScreen({ navigation, route }) {
             onEdit={(a) => openModal('account', a)} onDel={(a) => confirmDel(`la cuenta "${a.name}"`, () => store.deleteAccount(a.id))} />
         )}
         {tab === 'tarjetas' && (
-          <Tarjetas finance={finance} onEdit={(c) => openModal('card', c)} onDel={(c) => confirmDel(`la tarjeta "${c.bank}"`, () => store.deleteCard(c.id))} onAdd={() => openModal('card')} onCalendar={(c) => navigation.navigate('CardCalendar', { id: c.id })} onPay={(c) => openPay('card', c)} />
+          <Tarjetas finance={finance} onEdit={(c) => openModal('card', c)} onDel={(c) => confirmDel(`la tarjeta "${c.bank}"`, () => store.deleteCard(c.id))} onAdd={() => openModal('card')} onCalendar={(c) => navigation.navigate('CardCalendar', { id: c.id })} onPay={(c) => openPay('card', c)} onHistory={(c) => setHistoryFor({ kind: 'card', refId: c.id, label: c.bank, currency: c.currency })} />
         )}
         {tab === 'prestamos' && (
-          <Prestamos finance={finance} onEdit={(l) => openModal('loan', l)} onDel={(l) => confirmDel(`el préstamo "${l.name}"`, () => store.deleteLoan(l.id))} onAdd={() => openModal('loan')} onPay={(l) => openPay('loan', l)} onAddMore={(l) => openPay('loanAdd', l)} />
+          <Prestamos finance={finance} onEdit={(l) => openModal('loan', l)} onDel={(l) => confirmDel(`el préstamo "${l.name}"`, () => store.deleteLoan(l.id))} onAdd={() => openModal('loan')} onPay={(l) => openPay('loan', l)} onAddMore={(l) => openPay('loanAdd', l)} onHistory={(l) => setHistoryFor({ kind: 'loan', refId: l.id, label: l.name, currency: l.currency })} />
         )}
         {tab === 'deudas' && (
-          <Deudas finance={finance} onEdit={(d) => openModal('debt', d)} onDel={(d) => confirmDel(`la deuda "${d.name || d.creditor}"`, () => store.deleteDebt(d.id))} onAdd={() => openModal('debt')} onPay={(d) => openPay('debt', d)} />
+          <Deudas finance={finance} onEdit={(d) => openModal('debt', d)} onDel={(d) => confirmDel(`la deuda "${d.name || d.creditor}"`, () => store.deleteDebt(d.id))} onAdd={() => openModal('debt')} onPay={(d) => openPay('debt', d)} onHistory={(d) => setHistoryFor({ kind: 'debt', refId: d.id, label: d.creditor || d.name, currency: d.currency })} />
         )}
         <View style={{ height: 90 }} />
       </ScrollView>
@@ -358,6 +359,50 @@ export default function FinanzasScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+
+      {/* Modal: historial de pagos */}
+      <Modal visible={!!historyFor} transparent animationType="slide" onRequestClose={() => setHistoryFor(null)}>
+        <View style={styles.backdrop}>
+          <View style={styles.sheet}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Historial · {historyFor?.label || ''}</Text>
+              <TouchableOpacity onPress={() => setHistoryFor(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
+            </View>
+            {historyFor && (() => {
+              const list = (finance.payments || []).filter((p) => p.kind === historyFor.kind && p.refId === historyFor.refId).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+              const accName = (id) => id ? (finance.accounts.find((a) => a.id === id)?.name || '—') : 'Sin cuenta';
+              const total = list.reduce((s, p) => s + (p.amount || 0), 0);
+              if (list.length === 0) {
+                return (
+                  <View style={{ alignItems: 'center', padding: 28 }}>
+                    <Ionicons name="time-outline" size={40} color={COLORS.textMuted} />
+                    <Text style={[styles.hint, { textAlign: 'center', marginTop: 10 }]}>Aún no hay pagos registrados para este {historyFor.kind === 'card' ? 'tarjeta' : historyFor.kind === 'loan' ? 'préstamo' : 'deuda'}.</Text>
+                  </View>
+                );
+              }
+              return (
+                <>
+                  <View style={[styles.payNote, { borderColor: COLORS.green + '88', marginBottom: 12 }]}>
+                    <Text style={[styles.payNoteText, { color: COLORS.green }]}>Total pagado: {formatMoney(total, historyFor.currency)} · {list.length} pago{list.length > 1 ? 's' : ''}</Text>
+                  </View>
+                  <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                    {list.map((p) => (
+                      <View key={p.id} style={styles.histRow}>
+                        <Ionicons name="checkmark-circle" size={18} color={COLORS.green} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.histAmt}>{formatMoney(p.amount, historyFor.currency)}</Text>
+                          <Text style={styles.histSub}>Desde: {accName(p.accountId)}</Text>
+                        </View>
+                        <Text style={styles.histDate}>{p.date}</Text>
+                      </View>
+                    ))}
+                  </ScrollView>
+                </>
+              );
+            })()}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -456,7 +501,7 @@ function Cuentas({ finance, cur, onAdd, onMove, onEdit, onDel }) {
   );
 }
 
-function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay }) {
+function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay, onHistory }) {
   if (finance.cards.length === 0) {
     return <EmptyState icon="card-outline" title="Sin tarjetas" subtitle="Agrega tus tarjetas de crédito para controlar línea, uso, fechas de corte/pago e intereses." actionLabel="Agregar tarjeta" onAction={onAdd} />;
   }
@@ -496,10 +541,16 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay }) {
                   <Ionicons name="chevron-forward" size={16} color={COLORS.purpleLight} />
                 </TouchableOpacity>
                 {c.used > 0 && (
-                  <TouchableOpacity style={[styles.payBtn, { marginTop: 10 }]} onPress={() => onPay(c)} activeOpacity={0.85}>
-                    <Ionicons name="card-outline" size={16} color={COLORS.green} />
-                    <Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar pago a tarjeta</Text>
-                  </TouchableOpacity>
+                  <>
+                    <TouchableOpacity style={[styles.payBtn, { marginTop: 10 }]} onPress={() => onPay(c)} activeOpacity={0.85}>
+                      <Ionicons name="card-outline" size={16} color={COLORS.green} />
+                      <Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar pago a tarjeta</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.payBtn, { marginTop: 6, backgroundColor: 'transparent' }]} onPress={() => onHistory(c)} activeOpacity={0.85}>
+                      <Ionicons name="time-outline" size={16} color={COLORS.purpleLight} />
+                      <Text style={[styles.payBtnText, { color: COLORS.purpleLight }]}>Ver historial de pagos</Text>
+                    </TouchableOpacity>
+                  </>
                 )}
               </>
             ) : (
@@ -513,7 +564,7 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay }) {
   );
 }
 
-function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore }) {
+function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore, onHistory }) {
   if (finance.loans.length === 0) {
     return <EmptyState icon="cash-outline" title="Sin préstamos" subtitle="Registra préstamos (banco, familiar...) con su saldo pendiente y registra pagos." actionLabel="Agregar préstamo" onAction={onAdd} />;
   }
@@ -521,6 +572,8 @@ function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore }) {
     <View>
       {finance.loans.map((l) => {
         const t = loanType(l.lenderType);
+        const br = loanBreakdown(l);
+        const isCuotas = (l.installmentsTotal || 0) > 0;
         const pend = loanPending(l);
         const base = l.amount || (l.installment || 0) * (l.installmentsTotal || 0) || pend;
         const pct = base > 0 ? Math.min(100, Math.round(((base - pend) / base) * 100)) : 0;
@@ -537,16 +590,44 @@ function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore }) {
                 <Text style={styles.cardUsed}>Pagado {pct}%</Text>
                 <Text style={styles.cardAvail}>Falta {formatMoney(pend, l.currency)}</Text>
               </View>
-              <View style={styles.miniGrid}>
-                <Mini label="Monto" val={l.amount ? formatMoney(l.amount, l.currency) : '—'} />
-                <Mini label="Cuota" val={l.installment ? formatMoney(l.installment, l.currency) : '—'} />
-                <Mini label="Interés" val={l.interest ? `${l.interest}%` : '—'} />
-              </View>
+              {isCuotas ? (
+                <>
+                  <View style={[styles.loanKpis, { marginTop: 10 }]}>
+                    <View style={styles.loanKpi}><Text style={styles.loanKpiLbl}>Cuotas</Text><Text style={styles.loanKpiVal}>{br.installmentsPaid}/{br.installmentsTotal}</Text></View>
+                    <View style={styles.loanKpi}><Text style={styles.loanKpiLbl}>Faltan</Text><Text style={[styles.loanKpiVal, { color: COLORS.amber }]}>{br.remainingCuotas} cuotas</Text></View>
+                    <View style={styles.loanKpi}><Text style={styles.loanKpiLbl}>Cuota</Text><Text style={styles.loanKpiVal}>{formatMoney(br.installment, l.currency)}</Text></View>
+                  </View>
+                  <View style={styles.splitBar}>
+                    <View style={[styles.splitBarFill, { width: '100%' }]}>
+                      <View style={[styles.splitBarPart, { backgroundColor: COLORS.green, flex: br.paid / Math.max(1, br.paid + br.pendingCuotas) }]}>
+                        <Text style={styles.splitBarTxt}>CAPITAL {Math.round((br.paid / Math.max(1, br.paid + br.pendingCuotas)) * 100)}%</Text>
+                      </View>
+                      <View style={[styles.splitBarPart, { backgroundColor: COLORS.red + 'CC', flex: br.pendingCuotas / Math.max(1, br.paid + br.pendingCuotas) }]}>
+                        <Text style={[styles.splitBarTxt, { color: '#fff' }]}>PENDIENTE {Math.round((br.pendingCuotas / Math.max(1, br.paid + br.pendingCuotas)) * 100)}%</Text>
+                      </View>
+                    </View>
+                  </View>
+                  <View style={styles.splitRow}>
+                    <View style={styles.splitCell}><Text style={styles.splitLbl}>Pagado</Text><Text style={[styles.splitVal, { color: COLORS.green }]}>{formatMoney(br.paid, l.currency)}</Text></View>
+                    <View style={styles.splitCell}><Text style={styles.splitLbl}>Pendiente</Text><Text style={[styles.splitVal, { color: COLORS.red }]}>{formatMoney(br.pendingCuotas, l.currency)}</Text></View>
+                  </View>
+                </>
+              ) : (
+                <View style={styles.miniGrid}>
+                  <Mini label="Monto" val={l.amount ? formatMoney(l.amount, l.currency) : '—'} />
+                  <Mini label="Cuota" val={l.installment ? formatMoney(l.installment, l.currency) : '—'} />
+                  <Mini label="Interés" val={l.interest ? `${l.interest}%` : '—'} />
+                </View>
+              )}
             </TouchableOpacity>
             <View style={styles.payRow}>
               <TouchableOpacity style={styles.payBtn} onPress={() => onPay(l)}><Ionicons name="cash-outline" size={16} color={COLORS.green} /><Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar pago</Text></TouchableOpacity>
               <TouchableOpacity style={styles.payBtn} onPress={() => onAddMore(l)}><Ionicons name="add-circle-outline" size={16} color={COLORS.amber} /><Text style={[styles.payBtnText, { color: COLORS.amber }]}>Monto adicional</Text></TouchableOpacity>
             </View>
+            <TouchableOpacity style={[styles.payBtn, { marginTop: 6, backgroundColor: 'transparent' }]} onPress={() => onHistory(l)} activeOpacity={0.85}>
+              <Ionicons name="time-outline" size={16} color={COLORS.purpleLight} />
+              <Text style={[styles.payBtnText, { color: COLORS.purpleLight }]}>Ver historial de pagos</Text>
+            </TouchableOpacity>
           </View>
         );
       })}
@@ -555,7 +636,7 @@ function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore }) {
   );
 }
 
-function Deudas({ finance, onEdit, onDel, onAdd, onPay }) {
+function Deudas({ finance, onEdit, onDel, onAdd, onPay, onHistory }) {
   if (finance.debts.length === 0) {
     return <EmptyState icon="alert-circle-outline" title="Sin deudas" subtitle="Registra a quién le debes, monto y prioridad, y registra tus pagos." actionLabel="Agregar deuda" onAction={onAdd} />;
   }
@@ -584,6 +665,10 @@ function Deudas({ finance, onEdit, onDel, onAdd, onPay }) {
             <View style={styles.payRow}>
               <TouchableOpacity style={styles.payBtn} onPress={() => onPay(d)}><Ionicons name="cash-outline" size={16} color={COLORS.green} /><Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar pago</Text></TouchableOpacity>
             </View>
+            <TouchableOpacity style={[styles.payBtn, { marginTop: 6, backgroundColor: 'transparent' }]} onPress={() => onHistory(d)} activeOpacity={0.85}>
+              <Ionicons name="time-outline" size={16} color={COLORS.purpleLight} />
+              <Text style={[styles.payBtnText, { color: COLORS.purpleLight }]}>Ver historial de pagos</Text>
+            </TouchableOpacity>
           </View>
         );
       })}
@@ -675,4 +760,22 @@ const styles = StyleSheet.create({
   payBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: COLORS.bg3 },
   payBtnText: { fontSize: 13, fontWeight: '700' },
   payHint: { fontSize: 12, color: COLORS.textMuted, lineHeight: 17, marginBottom: 4 },
+  // estilos para desglose de préstamos
+  loanKpis: { flexDirection: 'row', gap: 8 },
+  loanKpi: { flex: 1, backgroundColor: COLORS.bg3, borderRadius: 10, padding: 10, alignItems: 'center' },
+  loanKpiLbl: { fontSize: 10, color: COLORS.textMuted, fontWeight: '600' },
+  loanKpiVal: { fontSize: 15, color: COLORS.text, fontWeight: '800', marginTop: 2 },
+  splitBar: { height: 18, borderRadius: 6, overflow: 'hidden', marginTop: 8 },
+  splitBarFill: { flex: 1, flexDirection: 'row' },
+  splitBarPart: { height: 18, alignItems: 'center', justifyContent: 'center' },
+  splitBarTxt: { color: '#fff', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  splitRow: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  splitCell: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  splitLbl: { fontSize: 11, color: COLORS.textMuted, fontWeight: '600' },
+  splitVal: { fontSize: 13, fontWeight: '800' },
+  // estilos para historial de pagos
+  histRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderColor: COLORS.border },
+  histAmt: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  histSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  histDate: { fontSize: 12, color: COLORS.textSub, fontWeight: '600' },
 });

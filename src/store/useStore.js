@@ -451,6 +451,13 @@ export const useStore = create((set, get) => ({
           return { ...c, used: (c.used || 0) + amt };                                             // gasto con crédito
         })
       : f.cards;
+    // Historial de pagos a tarjeta
+    if (t.type === 'pago' && t.cardId) {
+      const c = f.cards.find((x) => x.id === t.cardId);
+      const list = [...(f.payments || []), { id: get()._fid(), date: today(), kind: 'card', refId: t.cardId, label: c?.bank || 'Tarjeta', amount: amt, accountId: t.accountId }];
+      await get()._saveFinance({ ...f, accounts, cards, transactions: [t, ...f.transactions], payments: list });
+      return { success: true };
+    }
     await get()._saveFinance({ ...f, accounts, cards, transactions: [t, ...f.transactions] });
     return { success: true };
   },
@@ -527,6 +534,7 @@ export const useStore = create((set, get) => ({
       if (res && res.error) return res;
     }
     await get().updateDebt(id, { paid: (d.paid || 0) + amount });
+    await get()._addPaymentHistory({ kind: 'debt', refId: id, label: d.creditor || d.name || 'Deuda', amount, accountId });
     return { success: true };
   },
   payLoan: async (id, amount, accountId) => {
@@ -537,7 +545,13 @@ export const useStore = create((set, get) => ({
       if (res && res.error) return res;
     }
     const pend = l.pending != null ? l.pending : loanPending(l);
-    await get().updateLoan(id, { pending: Math.max(0, pend - amount) });
+    // Si el préstamo es por cuotas, avanzar el contador de cuotas pagadas
+    const totalC = l.installmentsTotal || 0;
+    const paidC = l.installmentsPaid || 0;
+    const patch = { pending: Math.max(0, pend - amount) };
+    if (totalC > 0) patch.installmentsPaid = Math.min(totalC, paidC + 1);
+    await get().updateLoan(id, patch);
+    await get()._addPaymentHistory({ kind: 'loan', refId: id, label: l.name || 'Préstamo', amount, accountId });
     return { success: true };
   },
   addLoanAmount: async (id, amount, accountId) => {
@@ -549,6 +563,19 @@ export const useStore = create((set, get) => ({
     const pend = l.pending != null ? l.pending : loanPending(l);
     await get().updateLoan(id, { pending: pend + amount, amount: (l.amount || 0) + amount });
     return { success: true };
+  },
+
+  // ─── Historial de pagos (deudas, préstamos, tarjetas) ────────────
+  _addPaymentHistory: async (entry) => {
+    const f = get().finance;
+    const e = { id: get()._fid(), date: today(), ...entry };
+    const list = [...(f.payments || []), e];
+    await get()._saveFinance({ ...f, payments: list });
+  },
+  clearPaymentHistoryFor: async (refId) => {
+    const f = get().finance;
+    const list = (f.payments || []).filter((p) => p.refId !== refId);
+    await get()._saveFinance({ ...f, payments: list });
   },
 
   // ─── ÁREAS (árbol de vida) ───────────────────────────────

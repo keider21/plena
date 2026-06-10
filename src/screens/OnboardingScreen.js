@@ -300,4 +300,10 @@ const styles = StyleSheet.create({
   nextBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   skip: { alignItems: 'center', paddingVertical: 12 },
   skipText: { color: COLORS.textMuted, fontSize: 13 },
+  // estilos para los campos avanzados de tarjeta
+  advBox: { backgroundColor: COLORS.bg3, borderRadius: 12, padding: 12, marginTop: 4, marginBottom: 8, borderWidth: 0.5, borderColor: COLORS.purple + '44' },
+  advTitle: { fontSize: 12, color: COLORS.purpleLight, fontWeight: '700', marginBottom: 2 },
+  advHelp: { fontSize: 11, color: COLORS.textMuted, marginBottom: 10, lineHeight: 15 },
+  advLbl: { fontSize: 10, color: COLORS.textSub, fontWeight: '600', marginBottom: 4 },
+  advInput: { backgroundColor: COLORS.card, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 9, color: COLORS.text, fontSize: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder },
 });

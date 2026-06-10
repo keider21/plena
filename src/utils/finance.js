@@ -105,6 +105,27 @@ export function loanPending(loan) {
   return remaining * (loan.installment || 0);
 }
 
+// Desglosa un préstamo por cuotas: cuánto es capital vs cuánto es interés.
+// Devuelve { total, capital, interest, paid, pending, installmentsTotal, installmentsPaid, installment, pctPaid }
+export function loanBreakdown(loan) {
+  const total = loan.amount || 0;
+  const installment = loan.installment || 0;
+  const installmentsTotal = loan.installmentsTotal || 0;
+  const installmentsPaid = loan.installmentsPaid || 0;
+  const interest = loan.interest || 0; // % TEA (informativo)
+  const paidCuotas = installmentsPaid;
+  const remainingCuotas = Math.max(0, installmentsTotal - paidCuotas);
+  const paid = paidCuotas * installment;
+  const pendingCuotas = remainingCuotas * installment;
+  const pctPaid = installmentsTotal > 0 ? Math.round((paidCuotas / installmentsTotal) * 100) : 0;
+  return {
+    total, installment, installmentsTotal, installmentsPaid: paidCuotas,
+    remainingCuotas, paid, pendingCuotas, interest, pctPaid,
+    // cuando el modelo viejo (pendiente) gana
+    pendingManual: loan.pending != null ? loan.pending : null,
+  };
+}
+
 // Ocupación → categoría de ingreso propia (estadísticas más reales)
 export const OCCUPATIONS = [
   { key: 'taxista', label: 'Taxista', income: 'Ingresos por taxi' },

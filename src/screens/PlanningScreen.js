@@ -181,21 +181,81 @@ export default function PlanningScreen({ navigation }) {
     setGap(null); setGapName('');
   };
 
-  // Edición de una actividad SOLO para hoy
+  // Edición de una actividad / hueco / bloque fijo SOLO para hoy
   const openInstEdit = (seg) => {
-    if (!isToday || seg.type !== 'activity' || !seg.instanceId) return;
-    const inst = todayInstances.find((it) => it.id === seg.instanceId);
-    if (inst) setInstEdit({ ...inst });
+    if (!isToday) return;
+    // Caso 1: actividad creada como instancia (hueco llenado o actividad movida)
+    if (seg.type === 'activity' && seg.instanceId) {
+      const inst = todayInstances.find((it) => it.id === seg.instanceId);
+      if (inst) { setInstEdit({ kind: 'instance', ...inst }); return; }
+    }
+    // Caso 2: hueco (lo que sea que esté vacío en el día) → lo convertimos en una instancia para hoy
+    if (seg.type === 'hole') {
+      const id = 'inst_' + Date.now();
+      setInstEdit({
+        kind: 'instance',
+        id,
+        activityId: id,
+        name: '',
+        icon: 'flash-outline',
+        color: COLORS.purple,
+        start: toTime(seg.start),
+        end: toTime(seg.end),
+        _seg: seg,
+      });
+      return;
+    }
+    // Caso 3: bloque fijo (desayuno, almuerzo, cena, trabajo, estudio) → guardamos un override solo para hoy
+    if (seg.type === 'fixed' || seg.type === 'sleep') {
+      setInstEdit({
+        kind: 'fixedOverride',
+        id: 'fov_' + Date.now(),
+        label: seg.label,
+        icon: seg.icon || 'ellipse',
+        color: seg.color || COLORS.purple,
+        start: toTime(seg.start),
+        end: toTime(seg.end),
+        _seg: seg,
+        _type: seg.type,
+      });
+      return;
+    }
   };
   const saveInstEdit = async () => {
-    if (!instEdit || !instEdit.name.trim()) return;
-    const next = ensureToday().map((it) => (it.id === instEdit.id ? { ...it, ...instEdit, name: instEdit.name.trim() } : it));
-    await saveDayPlan(todayStr, next);
+    if (!instEdit) return;
+    if (instEdit.kind === 'fixedOverride') {
+      // override de un bloque fijo SOLO para hoy
+      const ovr = {
+        kind: 'fixedOverride',
+        id: instEdit.id,
+        type: instEdit._type,
+        label: instEdit.label?.trim() || 'Bloque',
+        icon: instEdit.icon,
+        color: instEdit.color,
+        start: instEdit.start,
+        end: instEdit.end,
+        appliedTo: todayStr,
+      };
+      const arr = (dayPlans[todayStr] || []).filter((x) => !(x.kind === 'fixedOverride' && x.type === ovr.type));
+      await saveDayPlan(todayStr, [...arr, ovr]);
+    } else {
+      // instancia normal (actividad o hueco convertido)
+      if (!instEdit.name.trim()) return;
+      const next = ensureToday().map((it) => (it.id === instEdit.id ? { ...it, ...instEdit, name: instEdit.name.trim() } : it));
+      const exists = ensureToday().some((it) => it.id === instEdit.id);
+      await saveDayPlan(todayStr, exists ? next : [...ensureToday(), { id: instEdit.id, activityId: instEdit.activityId || instEdit.id, name: instEdit.name.trim(), icon: instEdit.icon, color: instEdit.color, start: instEdit.start, end: instEdit.end }]);
+    }
     setInstEdit(null);
   };
   const deleteInst = async () => {
     if (!instEdit) return;
-    await saveDayPlan(todayStr, ensureToday().filter((it) => it.id !== instEdit.id));
+    if (instEdit.kind === 'fixedOverride') {
+      // eliminar el override = volver al bloque original
+      const arr = (dayPlans[todayStr] || []).filter((x) => !(x.kind === 'fixedOverride' && x.id === instEdit.id));
+      await saveDayPlan(todayStr, arr);
+    } else {
+      await saveDayPlan(todayStr, ensureToday().filter((it) => it.id !== instEdit.id));
+    }
     setInstEdit(null);
   };
 
@@ -304,12 +364,13 @@ export default function PlanningScreen({ navigation }) {
             const label = rejected ? 'Hueco (rechazado)' : s.label;
             const rem = isToday ? remainOf(s) : null;
             const isCur = rem != null;
-            const editable = isToday && s.type === 'activity' && !!s.instanceId;
+            const editable = isToday && (s.type === 'activity' ? !!s.instanceId : (s.type === 'hole' || s.type === 'fixed' || s.type === 'sleep'));
             return (
               <TouchableOpacity
                 key={i}
                 activeOpacity={editable ? 0.6 : 1}
                 onLongPress={() => openInstEdit(s)}
+                onPress={() => editable ? openInstEdit(s) : null}
                 delayLongPress={300}
                 style={[styles.tRow, type === 'hole' && styles.tRowHole, isCur && styles.tRowCurrent]}
               >
