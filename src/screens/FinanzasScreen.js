@@ -66,6 +66,16 @@ export default function FinanzasScreen({ navigation, route }) {
   const savePay = async () => {
     const amt = num(pay.amount);
     if (amt <= 0) { Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.'); return; }
+    // Pago a tarjeta de crédito: el monto NO puede ser mayor a lo que debe (pay.item.used)
+    if (pay.mode === 'card') {
+      const due = pay.item.used || 0;
+      if (amt - due > 0.005) { Alert.alert('Pago excesivo', `Solo debes ${formatMoney(due, pay.item.currency || cur)}. No puedes pagar más.`); return; }
+      if (!pay.accountId) { Alert.alert('Elige una cuenta', 'Para registrar el pago necesitás una cuenta de origen.'); return; }
+      const res = await store.addTransaction({ type: 'pago', accountId: pay.accountId, cardId: pay.item.id, amount: amt, category: null, note: 'Pago a tarjeta' });
+      if (res && res.error) { Alert.alert('No se pudo', res.error); return; }
+      setPay(null);
+      return;
+    }
     let res;
     if (pay.mode === 'debt') res = await store.payDebt(pay.item.id, amt, pay.accountId);
     else if (pay.mode === 'loan') res = await store.payLoan(pay.item.id, amt, pay.accountId);

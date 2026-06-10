@@ -205,8 +205,8 @@ export default function PlanningScreen({ navigation }) {
       });
       return;
     }
-    // Caso 3: bloque fijo (desayuno, almuerzo, cena, trabajo, estudio) → guardamos un override solo para hoy
-    if (seg.type === 'fixed' || seg.type === 'sleep') {
+    // Caso 3: bloque fijo del plan (trabajo, comida, siesta) → guardamos un override solo para hoy
+    if (seg.type === 'fixed' || seg.type === 'work' || seg.type === 'meal' || seg.type === 'nap') {
       setInstEdit({
         kind: 'fixedOverride',
         id: 'fov_' + Date.now(),
@@ -216,7 +216,7 @@ export default function PlanningScreen({ navigation }) {
         start: toTime(seg.start),
         end: toTime(seg.end),
         _seg: seg,
-        _type: seg.type,
+        _type: 'fixed',
       });
       return;
     }
@@ -364,7 +364,7 @@ export default function PlanningScreen({ navigation }) {
             const label = rejected ? 'Hueco (rechazado)' : s.label;
             const rem = isToday ? remainOf(s) : null;
             const isCur = rem != null;
-            const editable = isToday && (s.type === 'activity' ? !!s.instanceId : (s.type === 'hole' || s.type === 'fixed' || s.type === 'sleep'));
+            const editable = isToday && (s.type === 'activity' ? !!s.instanceId : (s.type === 'hole' || s.type === 'work' || s.type === 'meal' || s.type === 'nap' || s.type === 'fixed'));
             return (
               <TouchableOpacity
                 key={i}
@@ -396,15 +396,20 @@ export default function PlanningScreen({ navigation }) {
             );
           })}
           {/* Dormir */}
-          <View style={[styles.tRow, { backgroundColor: COLORS.bg2 }]}>
+          <TouchableOpacity
+            activeOpacity={isToday ? 0.6 : 1}
+            onPress={() => isToday ? openInstEdit({ type: 'fixed', label: 'Dormir', icon: 'moon-outline', color: COLORS.indigo, start: toMin(schedule.sleepTime), end: (toMin(schedule.sleepTime) + 1440) % 1440 < toMin(schedule.wakeTime) ? toMin(schedule.wakeTime) + 1440 : toMin(schedule.wakeTime) }) : null}
+            onLongPress={() => isToday ? openInstEdit({ type: 'fixed', label: 'Dormir', icon: 'moon-outline', color: COLORS.indigo, start: toMin(schedule.sleepTime), end: (toMin(schedule.sleepTime) + 1440) % 1440 < toMin(schedule.wakeTime) ? toMin(schedule.wakeTime) + 1440 : toMin(schedule.wakeTime) }) : null}
+            style={[styles.tRow, { backgroundColor: COLORS.bg2 }]}
+          >
             <Text style={styles.tTime}>{schedule.sleepTime}</Text>
             <View style={[styles.tBar, { backgroundColor: COLORS.indigo }]} />
-            <View style={styles.tBody}><Text style={styles.tLabel}>😴 Dormir</Text><Text style={styles.tRange}>{schedule.sleepTime}–{schedule.wakeTime}</Text></View>
+            <View style={styles.tBody}><Text style={styles.tLabel}>😴 Dormir{isToday ? ' ✎' : ''}</Text><Text style={styles.tRange}>{schedule.sleepTime}–{schedule.wakeTime}</Text></View>
             <Text style={styles.tDur}>{minutesToLabel(sleepDur)}</Text>
-          </View>
+          </TouchableOpacity>
         </View>
         <Text style={styles.legendInline}>
-          {isToday ? 'Mantén presionada una actividad para editarla, moverla o eliminarla (solo hoy)' : 'Vista del plan. Para cambiarlo usa “Editar plan”.'}
+          {isToday ? 'Toca o mantén presionada una fila para editarla (cambia nombre, hora, color) — los cambios solo aplican a HOY' : 'Vista del plan. Para cambiarlo usa “Editar plan”.'}
         </Text>
       </View>
 
