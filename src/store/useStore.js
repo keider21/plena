@@ -21,6 +21,8 @@ const DEFAULT_GOALS = [];
 const DEFAULT_SETTINGS = {
   currency: 'PEN',          // moneda principal: Soles
   secondaryCurrency: 'USD', // moneda secundaria: Dólares
+  themeMode: 'dark',        // 'dark' | 'light'
+  customHabitCategories: [], // categorías de hábitos personalizadas
 };
 
 // Actividades sugeridas para encajar en el día (el usuario elige y edita)
@@ -260,6 +262,14 @@ export const useStore = create((set, get) => ({
     set({ userProfile: profile, onboardingDone: true });
     await AsyncStorage.setItem('userProfile', JSON.stringify(profile));
     await AsyncStorage.setItem('onboardingDone', 'true');
+  },
+
+  // ─── SETTINGS (genérico) ─────────────────────────────
+  setSetting: async (key, value) => {
+    const s = get().settings || {};
+    const updated = { ...s, [key]: value };
+    set({ settings: updated });
+    await AsyncStorage.setItem('settings', JSON.stringify(updated));
   },
 
   // ─── HABITS ──────────────────────────────────────────────

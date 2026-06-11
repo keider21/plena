@@ -9,7 +9,7 @@ import { goalProgress } from '../utils/goals';
 import { APP_VERSION, CHANGELOG } from '../utils/version';
 
 export default function ProfileScreen({ navigation }) {
-  const { currentUser, logout, habits, goals, settings, setCurrency, getTodayStats, getWeeklyScore } = useStore();
+  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore } = useStore();
   const [changelog, setChangelog] = useState(false);
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
@@ -86,6 +86,29 @@ export default function ProfileScreen({ navigation }) {
             );
           })}
         </View>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Apariencia</Text>
+        <View style={styles.currencyRow}>
+          {[
+            { code: 'dark', label: 'Oscuro', icon: 'moon' },
+            { code: 'light', label: 'Claro', icon: 'sunny' },
+          ].map((t) => {
+            const sel = (settings.themeMode || 'dark') === t.code;
+            return (
+              <TouchableOpacity
+                key={t.code}
+                onPress={() => setSetting('themeMode', t.code)}
+                style={[styles.currencyPill, sel && styles.currencyPillOn]}
+              >
+                <Ionicons name={t.icon + '-outline'} size={16} color={sel ? COLORS.purpleLight : COLORS.textSub} />
+                <Text style={[styles.currencyTxt, sel && styles.currencyTxtOn]}>{t.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={styles.versionNote}>Próximamente más opciones de tema</Text>
       </View>
 
       <View style={styles.section}>

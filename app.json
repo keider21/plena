@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Vida Plena",
-    "slug": "vidaplena",
+    "slug": "vidaplena-clow22",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -48,8 +48,9 @@
     "scheme": "vidaplena",
     "extra": {
       "eas": {
-        "projectId": "793e831d-b5f2-4170-9fff-91fc7d421df3"
+        "projectId": "97d081a1-b605-4073-831f-9d29b52a648f"
       }
-    }
+    },
+    "owner": "clow22"
   }
 }
