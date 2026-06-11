@@ -8,6 +8,7 @@ import { useStore } from '../store/useStore';
 import { COLORS, CAT_COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
 import { goalProgress, catOf } from '../utils/goals';
+import { categoryColor } from '../utils/finance';
 import { registerForPushNotifications } from '../utils/notifications';
 
 const QUOTES = [
@@ -19,7 +20,7 @@ const QUOTES = [
 ];
 
 export default function DashboardScreen({ navigation }) {
-  const { currentUser, habits, habitLogs, goals, settings, getTodayStats, getWeeklyScore, getMonthlyStats } = useStore();
+  const { currentUser, habits, habitLogs, goals, settings, getTodayStats, getWeeklyScore, getMonthlyStats, finance: storeFinance } = useStore();
   const cur = settings.currency;
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
@@ -180,23 +181,46 @@ export default function DashboardScreen({ navigation }) {
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Finanzas del mes</Text>
-        <View style={styles.finGrid}>
-          <View style={[styles.finCard, { borderLeftColor: COLORS.green }]}>
-            <Text style={styles.finLabel}>Ingresos</Text>
-            <Text style={[styles.finVal, { color: COLORS.green }]}>{formatMoney(finance.ingresos, cur)}</Text>
-          </View>
-          <View style={[styles.finCard, { borderLeftColor: COLORS.red }]}>
-            <Text style={styles.finLabel}>Gastos</Text>
-            <Text style={[styles.finVal, { color: COLORS.red }]}>{formatMoney(finance.gastos, cur)}</Text>
-          </View>
-          <View style={[styles.finCard, { borderLeftColor: COLORS.purpleLight }]}>
-            <Text style={styles.finLabel}>Balance</Text>
-            <Text style={[styles.finVal, { color: finance.balance >= 0 ? COLORS.green : COLORS.red }]}>
-              {finance.balance >= 0 ? '+' : ''}{formatMoney(finance.balance, cur)}
-            </Text>
-          </View>
+        <View style={styles.sectionHead}>
+          <Text style={styles.sectionTitle}>En qué se fue tu plata</Text>
+          <Text style={styles.sectionLink}>{finance.gastos > 0 ? formatMoney(finance.gastos, cur) : ''}</Text>
         </View>
+        {(() => {
+          const txs = (storeFinance && Array.isArray(storeFinance.transactions)) ? storeFinance.transactions : [];
+          const month = format(new Date(), 'yyyy-MM');
+          const gastosMes = txs.filter((t) => (t.date || '').startsWith(month) && t.type === 'gasto');
+          const totalGastos = gastosMes.reduce((a, t) => a + (t.amount || 0), 0);
+          const byCat = {};
+          for (const t of gastosMes) {
+            const k = t.category || 'Otros';
+            byCat[k] = (byCat[k] || 0) + (t.amount || 0);
+          }
+          const top = Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 5);
+          if (top.length === 0) {
+            return <Text style={styles.emptyHint}>Aún no registras gastos este mes.</Text>;
+          }
+          return (
+            <View style={styles.catReportCard}>
+              {top.map(([cat, amt], i) => {
+                const pct = totalGastos > 0 ? Math.round((amt / totalGastos) * 100) : 0;
+                const col = categoryColor ? categoryColor(cat) : COLORS.purpleLight;
+                return (
+                  <View key={cat} style={styles.catRow}>
+                    <View style={styles.catHead}>
+                      <View style={[styles.catDot, { backgroundColor: col }]} />
+                      <Text style={styles.catName} numberOfLines={1}>{cat}</Text>
+                      <Text style={[styles.catPct, { color: col }]}>{pct}%</Text>
+                      <Text style={styles.catAmt}>{formatMoney(amt, cur)}</Text>
+                    </View>
+                    <View style={styles.catBarBg}>
+                      <View style={[styles.catBarFill, { width: pct + '%', backgroundColor: col }]} />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          );
+        })()}
       </View>
 
       <View style={{ height: 90 }} />
@@ -278,4 +302,13 @@ const styles = StyleSheet.create({
   qItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13, paddingHorizontal: 12 },
   qIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   qLabel: { flex: 1, fontSize: 15, color: COLORS.text, fontWeight: '500' },
+  catReportCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder, gap: 10 },
+  catRow: { gap: 4 },
+  catHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  catDot: { width: 8, height: 8, borderRadius: 4 },
+  catName: { flex: 1, fontSize: 13, color: COLORS.text, fontWeight: '500' },
+  catPct: { fontSize: 12, fontWeight: '700' },
+  catAmt: { fontSize: 12, color: COLORS.textMuted, minWidth: 70, textAlign: 'right' },
+  catBarBg: { height: 6, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden' },
+  catBarFill: { height: 6, borderRadius: 4 },
 });
