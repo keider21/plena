@@ -43,6 +43,13 @@ export default function DashboardScreen({ navigation }) {
   const maxWeekBar = 80;
 
   const [quickMenu, setQuickMenu] = useState(false);
+  const [search, setSearch] = useState('');
+  const allTxs = (storeFinance && Array.isArray(storeFinance.transactions)) ? storeFinance.transactions : [];
+  const recentTxs = allTxs.filter((t) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (t.note || '').toLowerCase().includes(q) || (t.category || '').toLowerCase().includes(q) || (t.type || '').toLowerCase().includes(q);
+  }).slice(0, 8);
   const QUICK = [
     { q: 'gasto', label: 'Agregar gasto', icon: 'arrow-up-circle-outline', color: COLORS.red },
     { q: 'ingreso', label: 'Agregar ingreso', icon: 'arrow-down-circle-outline', color: COLORS.green },
