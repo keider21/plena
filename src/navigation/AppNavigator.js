@@ -33,6 +33,7 @@ const TAB_ITEMS = [
   { name: 'Áreas', component: AreasScreen, icon: 'git-branch-outline', iconActive: 'git-branch' },
   { name: 'Finanzas', component: FinanzasScreen, icon: 'wallet-outline', iconActive: 'wallet' },
   { name: 'IA', component: AsistenteIAScreen, icon: 'sparkles-outline', iconActive: 'sparkles' },
+  { name: 'Perfil', component: ProfileScreen, icon: 'person-circle-outline', iconActive: 'person-circle' },
 ];
 
 function MainTabs() {
@@ -69,7 +70,6 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Main" component={MainTabs} />
-      <Stack.Screen name="Profile" component={ProfileScreen} />
       <Stack.Screen name="Permisos" component={PermisosScreen} />
       <Stack.Screen name="PlanningWizard" component={PlanningWizard} />
       <Stack.Screen name="Calendar" component={CalendarScreen} />
