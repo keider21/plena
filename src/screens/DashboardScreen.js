@@ -19,11 +19,11 @@ const QUOTES = [
 ];
 
 export default function DashboardScreen({ navigation }) {
-  const { currentUser, habits, habitLogs, goals, settings, finance, getTodayStats, getWeeklyScore, getMonthlyStats } = useStore();
+  const { currentUser, habits, habitLogs, goals, settings, finance, getTodayStats, getWeeklyScore } = useStore();
   const cur = settings.currency;
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
-  const finance = getMonthlyStats();
+  const monthly = getMonthlyStats();
   const today = format(new Date(), 'yyyy-MM-dd');
   const quote = QUOTES[new Date().getDay() % QUOTES.length];
   const dayName = format(new Date(), "EEEE d 'de' MMMM", { locale: es });
