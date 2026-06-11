@@ -1,22 +1,34 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import { CURRENCY_LIST } from '../utils/currency';
 import { goalProgress } from '../utils/goals';
+import { exportTransactionsCSV } from '../utils/exportCSV';
 import { APP_VERSION, CHANGELOG } from '../utils/version';
 
 export default function ProfileScreen({ navigation }) {
-  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore } = useStore();
+  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance } = useStore();
   const [changelog, setChangelog] = useState(false);
+  const [newCat, setNewCat] = useState('');
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
   const avgWeekly = weekly.length > 0
     ? Math.round(weekly.reduce((a, b) => a + b, 0) / weekly.length)
     : 0;
   const completedGoals = goals.filter(g => goalProgress(g) === 100).length;
+
+  const handleExport = async () => {
+    const txs = finance?.transactions || [];
+    try {
+      await exportTransactionsCSV(txs, settings.currency);
+    } catch (e) {
+      Alert.alert('Error', e.message || 'No se pudo exportar');
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert('Cerrar sesión', '¿Estás seguro?', [
@@ -27,6 +39,7 @@ export default function ProfileScreen({ navigation }) {
 
   const MENU = [
     { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.purple, onPress: () => navigation.navigate('Permisos') },
+    { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.blue, onPress: handleExport },
     { icon: 'barbell-outline', label: 'Editar mis hábitos', color: COLORS.green, onPress: () => navigation.navigate('Habitos') },
     { icon: 'star-outline', label: 'Editar mis metas', color: COLORS.amber, onPress: () => navigation.navigate('Metas') },
     { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue },
@@ -109,6 +122,49 @@ export default function ProfileScreen({ navigation }) {
           })}
         </View>
         <Text style={styles.versionNote}>Próximamente más opciones de tema</Text>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Categorías de gasto personalizadas</Text>
+        <Text style={styles.versionNote}>Aparecen junto a las predeterminadas al registrar un gasto.</Text>
+        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+          <TextInput
+            style={{ flex: 1, backgroundColor: COLORS.card, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: COLORS.text, fontSize: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder }}
+            value={newCat}
+            onChangeText={setNewCat}
+            placeholder="Ej: Taxi, Mascotas, Gym"
+            placeholderTextColor={COLORS.textMuted}
+          />
+          <TouchableOpacity
+            onPress={async () => {
+              const v = newCat.trim();
+              if (!v) return;
+              const list = Array.isArray(settings.customGastoCategories) ? settings.customGastoCategories : [];
+              if (list.includes(v)) { Alert.alert('Ya existe'); return; }
+              await setSetting('customGastoCategories', [...list, v]);
+              setNewCat('');
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+            }}
+            style={{ backgroundColor: COLORS.purple, borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Agregar</Text>
+          </TouchableOpacity>
+        </View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+          {(settings.customGastoCategories || []).map((c) => (
+            <View key={c} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.purpleDim, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14 }}>
+              <Text style={{ color: COLORS.purpleLight, fontSize: 12, fontWeight: '600' }}>{c}</Text>
+              <TouchableOpacity
+                onPress={async () => {
+                  const list = (settings.customGastoCategories || []).filter((x) => x !== c);
+                  await setSetting('customGastoCategories', list);
+                }}
+              >
+                <Ionicons name="close-circle" size={16} color={COLORS.purpleLight} />
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
       </View>
 
       <View style={styles.section}>

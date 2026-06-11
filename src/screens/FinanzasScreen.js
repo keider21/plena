@@ -15,6 +15,7 @@ import {
 import { purchasePaymentInfo } from '../utils/cardCycle';
 import Dropdown from '../components/Dropdown';
 import EmptyState from '../components/EmptyState';
+import PieChart from '../components/PieChart';
 
 const fmtDate = (d) => format(d, "d 'de' MMM", { locale: es });
 
@@ -61,7 +62,39 @@ export default function FinanzasScreen({ navigation, route }) {
   const [pay, setPay] = useState(null); // { mode:'debt'|'loan'|'loanAdd', item, amount, accountId }
   const [historyFor, setHistoryFor] = useState(null); // { kind:'debt'|'loan'|'card', refId, label }
 
-  const set = (k, v) => setF((p) => ({ ...p, [k]: v }));
+  const set = (k, v) => setF((p) => {
+    const next = { ...p, [k]: v };
+    // Sugerencia automática de categoría al escribir la nota
+    if (k === 'note' && typeof v === 'string' && v.length >= 3 && (p.type === 'gasto' || p.type === 'ingreso') && (!p.category || p.category === 'Otros')) {
+      const n = v.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const kw = {
+        gasto: {
+          'alimentacion': ['comida', 'almuerzo', 'cena', 'desayuno', 'pollo', 'pizza', 'restaurant', 'menu', 'snack', 'cafe'],
+          'transporte': ['taxi', 'uber', 'beat', 'gasolina', 'combustible', 'pasaje', 'metro', 'bus'],
+          'vivienda': ['alquiler', 'renta', 'hipoteca', 'condominio'],
+          'servicios': ['luz', 'agua', 'internet', 'cable', 'telefono', 'celular', 'recibo'],
+          'salud': ['farmacia', 'medicina', 'doctor', 'consulta', 'analisis', 'remedio'],
+          'educacion': ['colegio', 'universidad', 'curso', 'libro', 'matricula'],
+          'entretenimiento': ['cine', 'netflix', 'spotify', 'juego', 'concierto'],
+          'ropa': ['camisa', 'pantalon', 'zapato', 'ropa', 'polo'],
+        },
+        ingreso: {
+          'sueldo': ['sueldo', 'salario', 'quincena', 'pago', 'nomina'],
+          'negocio': ['venta', 'cliente', 'taxi', 'pasajero', 'colectivo'],
+          'freelance': ['freelance', 'proyecto', 'diseño', 'consultoria'],
+          'regalo': ['regalo', 'donacion', 'prestamo'],
+        },
+      };
+      const m = kw[p.type] || {};
+      for (const [cat, words] of Object.entries(m)) {
+        if (words.some((w) => n.includes(w))) {
+          next.category = cat.charAt(0).toUpperCase() + cat.slice(1);
+          break;
+        }
+      }
+    }
+    return next;
+  });
 
   const openPay = (mode, item) => {
     Haptics.selectionAsync().catch(() => {});
@@ -485,14 +518,23 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
 
       <Text style={styles.secTitle}>Gastos por categoría</Text>
       {cats.length === 0 ? <Text style={styles.hint}>Sin gastos en este periodo.</Text> : (
-        <View style={styles.card}>
-          {cats.map(([c, v]) => (
-            <View key={c} style={styles.catRow}>
-              <Text style={styles.catName}>{c}</Text>
-              <View style={styles.catBarBg}><View style={[styles.catBarFill, { width: `${Math.round((v / maxCat) * 100)}%`, backgroundColor: categoryColor(c) }]} /></View>
-              <Text style={styles.catVal}>{formatMoney(v, cur)}</Text>
-            </View>
-          ))}
+        <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', gap: 16, flexWrap: 'wrap' }]}>
+          <PieChart
+            data={cats.slice(0, 6).map(([c, v]) => ({ key: c, value: v, color: categoryColor(c) }))}
+            size={140}
+            thickness={24}
+            centerLabel="Total"
+            centerValue={formatMoney(stats.gastos, cur)}
+          />
+          <View style={{ flex: 1, minWidth: 140, gap: 6 }}>
+            {cats.slice(0, 6).map(([c, v]) => (
+              <View key={c} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: categoryColor(c) }} />
+                <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{c}</Text>
+                <Text style={{ fontSize: 11, color: COLORS.textSub, fontWeight: '600' }}>{Math.round((v / stats.gastos) * 100)}%</Text>
+              </View>
+            ))}
+          </View>
         </View>
       )}
 

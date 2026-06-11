@@ -273,9 +273,9 @@ export const useStore = create((set, get) => ({
   },
 
   // ─── HABITS ──────────────────────────────────────────────
-  logHabit: async (habitId, status) => {
+  logHabit: async (habitId, status, date) => {
     const { habitLogs } = get();
-    const d = today();
+    const d = date || today();
     const updated = {
       ...habitLogs,
       [habitId]: { ...(habitLogs[habitId] || generateLast30Days()), [d]: status },
