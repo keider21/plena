@@ -9,16 +9,27 @@ import { format } from 'date-fns';
 import { useStore } from './src/store/useStore';
 import { setupNotifications, rescheduleAll, snooze, addResponseListener } from './src/utils/notifications';
 import { placementsByDay } from './src/utils/timeOrganizer';
+import { installCrashHandler, installPromiseHandler, getLastCrash } from './src/utils/crashReporter';
+import CrashScreen from './src/components/CrashScreen';
+import ErrorBoundary from './src/components/ErrorBoundary';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import AppNavigator from './src/navigation/AppNavigator';
 import { COLORS } from './src/utils/theme';
 
+// Instalar handlers ANTES de que React monte nada
+installCrashHandler();
+installPromiseHandler();
+
 export default function App() {
   const { currentUser, onboardingDone, loadFromStorage } = useStore();
   const [ready, setReady] = useState(false);
+  const [lastCrash, setLastCrash] = useState(null);
 
   useEffect(() => {
+    // Cargar último crash al inicio
+    getLastCrash().then((c) => { if (c) setLastCrash(c); });
+
     loadFromStorage().then(async () => {
       setReady(true);
       try {
@@ -55,32 +66,39 @@ export default function App() {
     );
   }
 
+  // Si hay un crash guardado de la sesión anterior, mostrarlo
+  if (lastCrash) {
+    return <CrashScreen crash={lastCrash} onContinue={() => setLastCrash(null)} />;
+  }
+
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaProvider>
-        <StatusBar style="light" />
-        <NavigationContainer
-          theme={{
-            dark: true,
-            colors: {
-              primary: COLORS.purple,
-              background: COLORS.bg,
-              card: COLORS.bg2,
-              text: COLORS.text,
-              border: COLORS.border,
-              notification: COLORS.purple,
-            },
-          }}
-        >
-          {!currentUser ? (
-            <AuthScreen />
-          ) : !onboardingDone ? (
-            <OnboardingScreen />
-          ) : (
-            <AppNavigator />
-          )}
-        </NavigationContainer>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ErrorBoundary>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
+          <StatusBar style="light" />
+          <NavigationContainer
+            theme={{
+              dark: true,
+              colors: {
+                primary: COLORS.purple,
+                background: COLORS.bg,
+                card: COLORS.bg2,
+                text: COLORS.text,
+                border: COLORS.border,
+                notification: COLORS.purple,
+              },
+            }}
+          >
+            {!currentUser ? (
+              <AuthScreen />
+            ) : !onboardingDone ? (
+              <OnboardingScreen />
+            ) : (
+              <AppNavigator />
+            )}
+          </NavigationContainer>
+        </SafeAreaProvider>
+      </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }
