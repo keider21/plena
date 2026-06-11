@@ -18,7 +18,18 @@ const LEVEL_COLOR = { green: COLORS.green, yellow: COLORS.amber, red: COLORS.red
 export default function CardCalendar({ navigation, route }) {
   const { id } = route.params || {};
   const card = useStore((s) => s.finance.cards.find((c) => c.id === id));
+  const allPayments = useStore((s) => s.finance.payments) || [];
+  const allTxs = useStore((s) => s.finance.transactions) || [];
   const [cursor, setCursor] = useState(new Date());
+
+  // Historial unificado: payments[] + transactions[type='pago' & cardId]
+  const myPayments = allPayments
+    .filter((p) => p.refId === id)
+    .map((p) => ({ id: p.id, date: p.date, amount: p.amount, label: p.label, kind: 'payment' }));
+  const myTxPays = allTxs
+    .filter((t) => t.type === 'pago' && t.cardId === id)
+    .map((t) => ({ id: t.id, date: t.date, amount: t.amount, label: t.note || 'Pago', kind: 'tx' }));
+  const history = [...myPayments, ...myTxPays].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
   if (!card) {
     return (
@@ -144,6 +155,24 @@ export default function CardCalendar({ navigation, route }) {
                 Compra en los días <Text style={{ color: COLORS.green, fontWeight: '700' }}>verdes</Text> (justo después del cierre): así tu compra se cobra en el siguiente cierre y la pagas hasta la fecha de pago de ese ciclo, ganando el máximo de días sin intereses. Evita los días <Text style={{ color: COLORS.red, fontWeight: '700' }}>rojos</Text> (pegados al cierre). Y paga siempre antes de tu fecha límite.
               </Text>
             </View>
+
+            {/* historial de pagos */}
+            {history.length > 0 && (
+              <View style={styles.historyCard}>
+                <Text style={styles.historyTitle}>Historial de pagos</Text>
+                {history.slice(0, 10).map((h) => (
+                  <View key={h.id} style={styles.historyRow}>
+                    <Ionicons name={h.kind === 'payment' ? 'card' : 'checkmark-circle'} size={16} color={COLORS.purpleLight} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.historyLbl} numberOfLines={1}>{h.label}</Text>
+                      <Text style={styles.historyDate}>{h.date}</Text>
+                    </View>
+                    <Text style={styles.historyAmt}>-{formatMoney(h.amount, card.currency)}</Text>
+                  </View>
+                ))}
+                {history.length > 10 && <Text style={styles.historyMore}>+{history.length - 10} más</Text>}
+              </View>
+            )}
           </>
         )}
 
@@ -194,4 +223,11 @@ const styles = StyleSheet.create({
   infoCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, marginTop: 16, borderWidth: 0.5, borderColor: COLORS.cardBorder },
   infoTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 6 },
   infoText: { fontSize: 13, color: COLORS.textSub, lineHeight: 20 },
+  historyCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, marginTop: 16, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  historyTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text, marginBottom: 10 },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, borderBottomWidth: 0.5, borderColor: COLORS.border },
+  historyLbl: { fontSize: 13, color: COLORS.text, fontWeight: '500' },
+  historyDate: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
+  historyAmt: { fontSize: 14, fontWeight: '700', color: COLORS.green },
+  historyMore: { fontSize: 12, color: COLORS.textMuted, textAlign: 'center', marginTop: 8, fontStyle: 'italic' },
 });

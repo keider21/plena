@@ -144,11 +144,13 @@ export default function PlanningWizard({ navigation }) {
           <Text style={styles.cardTitle}>🍽️ Comidas</Text>
           {schedule.meals.map((m) => (
             <View key={m.id} style={styles.mealRow}>
-              <Toggle value={m.enabled} onChange={(v) => updMeal(m.id, { enabled: v })} />
-              <Text style={styles.mealName}>{m.name}</Text>
-              <View style={{ flexDirection: 'row', gap: 6 }}>
-                <TimePickerField value={m.start} onChange={(v) => updMeal(m.id, { start: v })} compact />
-                <TimePickerField value={m.end} onChange={(v) => updMeal(m.id, { end: v })} compact />
+              <View style={styles.mealTopRow}>
+                <Toggle value={m.enabled} onChange={(v) => updMeal(m.id, { enabled: v })} />
+                <Text style={styles.mealName}>{m.name}</Text>
+              </View>
+              <View style={styles.mealTimesRow}>
+                <View style={styles.mealTimeBox}><Text style={styles.mealTimeLbl}>Inicio</Text><TimePickerField value={m.start} onChange={(v) => updMeal(m.id, { start: v })} compact /></View>
+                <View style={styles.mealTimeBox}><Text style={styles.mealTimeLbl}>Fin</Text><TimePickerField value={m.end} onChange={(v) => updMeal(m.id, { end: v })} compact /></View>
               </View>
             </View>
           ))}
@@ -279,7 +281,11 @@ const styles = StyleSheet.create({
   dayChipOn: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
   dayChipText: { fontSize: 13, color: COLORS.textSub, fontWeight: '600' },
   dayChipTextOn: { color: '#fff' },
-  mealRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
+  mealRow: { marginTop: 12, gap: 8 },
+  mealTopRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  mealTimesRow: { flexDirection: 'row', gap: 8, marginLeft: 56 },
+  mealTimeBox: { flex: 1, gap: 4 },
+  mealTimeLbl: { fontSize: 10, color: COLORS.textMuted, fontWeight: '600' },
   mealName: { flex: 1, fontSize: 14, color: COLORS.text, fontWeight: '500' },
   toggle: { width: 46, height: 28, borderRadius: 14, backgroundColor: COLORS.bg3, padding: 3, justifyContent: 'center' },
   toggleOn: { backgroundColor: COLORS.purple },
