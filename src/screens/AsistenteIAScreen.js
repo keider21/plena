@@ -10,6 +10,7 @@ import { COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
 import { goalProgress } from '../utils/goals';
 import { APP_VERSION } from '../utils/version';
+import { computePoints, levelFor, progressToNext } from '../utils/levels';
 
 const EXAMPLES = [
   '¿Cuánto gasté este mes?',
@@ -346,7 +347,32 @@ function buildAnswer(input, store) {
     };
   }
 
-  // 26) FALLBACK
+  // 26) NIVELES / PUNTOS / EXPERIENCIA
+  if (/(nivel|niveles|puntos|experiencia|xp|ranking|que nivel|medalla|bronce|plata|oro|platino|diamante|leyenda|maestro)/.test(q)) {
+    const pts = computePoints(store);
+    const lvl = levelFor(pts.total);
+    const prog = progressToNext(pts.total);
+    const br = pts.breakdown;
+    return {
+      text: `🏆 **Tu nivel: ${lvl.name}** (${pts.total} pts)\n\n` +
+        `Cómo se calculan tus puntos:\n` +
+        `• Hábitos: +5 por hecho, +bonus por racha, -3 por no hacerlo\n` +
+        `• Finanzas: +3 por movimiento del día, +15 por cada pago de deuda/tarjeta\n` +
+        `• Plan: +8 por bloque cumplido a horario, -5 si hiciste menos de la mitad\n` +
+        `• Inactividad: -10 si llevás 7+ días sin registrar nada\n\n` +
+        `Hoy:\n` +
+        `• Hábitos: ${br.habits.done} hechos / ${br.habits.missed} fallados → ${br.habits.points >= 0 ? '+' : ''}${br.habits.points} pts\n` +
+        `• Movimientos hoy: ${br.transactions.count} → +${br.transactions.points} pts\n` +
+        `• Pagos recientes: ${br.transactions.payments} → +${br.transactions.paymentPts} pts\n` +
+        `• Plan: ${br.plan.completed}/${br.plan.total} bloques → ${br.plan.points >= 0 ? '+' : ''}${br.plan.points} pts\n\n` +
+        (prog.next
+          ? `Faltan **${prog.remaining} pts** para subir a ${prog.next.name}.`
+          : `¡Estás en el nivel máximo! 👑`) +
+        `\n\nLo ves en **Perfil** (la card grande arriba con tu medalla).`,
+    };
+  }
+
+  // 27) FALLBACK
   return {
     text: `Mmm, no estoy seguro de qué preguntaste 🤔\n\n` +
       `Puedo ayudarte con: gastos, ingresos, balance, tarjetas, hábitos, rachas, metas, áreas, deudas, préstamos, presupuestos, plan semanal, mentalidad, tema oscuro/claro, moneda, exportar CSV, notificaciones, cerrar sesión, consejos personalizados…\n\n` +

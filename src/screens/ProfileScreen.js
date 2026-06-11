@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,11 +9,18 @@ import { CURRENCY_LIST } from '../utils/currency';
 import { goalProgress } from '../utils/goals';
 import { exportTransactionsCSV } from '../utils/exportCSV';
 import { APP_VERSION, CHANGELOG } from '../utils/version';
+import { computePoints, levelFor, progressToNext, LEVELS } from '../utils/levels';
 
 export default function ProfileScreen({ navigation }) {
-  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance } = useStore();
+  const store = useStore();
+  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance } = store;
   const [changelog, setChangelog] = useState(false);
-  const [newCat, setNewCat] = useState('');
+  const points = useMemo(() => computePoints(store), [
+    store.habits, store.habitLogs, store.finance?.transactions, store.planning?.dayPlans,
+  ]);
+  const lvl = levelFor(points.total);
+  const prog = progressToNext(points.total);
+  const br = points.breakdown;
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
   const avgWeekly = weekly.length > 0
@@ -62,6 +69,42 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
       </LinearGradient>
+
+      <View style={styles.levelCard}>
+        <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.levelGrad}>
+          <View style={styles.levelTop}>
+            <View style={[styles.levelIconWrap, { backgroundColor: lvl.color + '22' }]}>
+              <Ionicons name={lvl.icon} size={28} color={lvl.color} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.levelName}>{lvl.name}</Text>
+              <Text style={styles.levelPts}>{points.total} pts</Text>
+            </View>
+          </View>
+          <View style={styles.levelBarBg}>
+            <View style={[styles.levelBarFill, { width: prog.pct + '%', backgroundColor: lvl.color }]} />
+          </View>
+          <Text style={styles.levelHint}>
+            {prog.next
+              ? `Faltan ${prog.remaining} pts para ${prog.next.name}`
+              : '¡Nivel máximo! 🪶'}
+          </Text>
+          <View style={styles.levelRow}>
+            <View style={styles.levelChip}>
+              <Ionicons name="flame-outline" size={14} color={COLORS.amber} />
+              <Text style={styles.levelChipTxt}>Hábitos {br.habits.points >= 0 ? '+' : ''}{br.habits.points}</Text>
+            </View>
+            <View style={styles.levelChip}>
+              <Ionicons name="wallet-outline" size={14} color={COLORS.purpleLight} />
+              <Text style={styles.levelChipTxt}>Finanzas +{br.transactions.points + br.transactions.paymentPts}</Text>
+            </View>
+            <View style={styles.levelChip}>
+              <Ionicons name="calendar-outline" size={14} color={COLORS.green} />
+              <Text style={styles.levelChipTxt}>Plan {br.plan.points >= 0 ? '+' : ''}{br.plan.points}</Text>
+            </View>
+          </View>
+        </LinearGradient>
+      </View>
 
       <View style={styles.statsGrid}>
         {[
@@ -122,49 +165,6 @@ export default function ProfileScreen({ navigation }) {
           })}
         </View>
         <Text style={styles.versionNote}>Próximamente más opciones de tema</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Categorías de gasto personalizadas</Text>
-        <Text style={styles.versionNote}>Aparecen junto a las predeterminadas al registrar un gasto.</Text>
-        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
-          <TextInput
-            style={{ flex: 1, backgroundColor: COLORS.card, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, color: COLORS.text, fontSize: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder }}
-            value={newCat}
-            onChangeText={setNewCat}
-            placeholder="Ej: Taxi, Mascotas, Gym"
-            placeholderTextColor={COLORS.textMuted}
-          />
-          <TouchableOpacity
-            onPress={async () => {
-              const v = newCat.trim();
-              if (!v) return;
-              const list = Array.isArray(settings.customGastoCategories) ? settings.customGastoCategories : [];
-              if (list.includes(v)) { Alert.alert('Ya existe'); return; }
-              await setSetting('customGastoCategories', [...list, v]);
-              setNewCat('');
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
-            }}
-            style={{ backgroundColor: COLORS.purple, borderRadius: 10, paddingHorizontal: 16, alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Agregar</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-          {(settings.customGastoCategories || []).map((c) => (
-            <View key={c} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.purpleDim, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14 }}>
-              <Text style={{ color: COLORS.purpleLight, fontSize: 12, fontWeight: '600' }}>{c}</Text>
-              <TouchableOpacity
-                onPress={async () => {
-                  const list = (settings.customGastoCategories || []).filter((x) => x !== c);
-                  await setSetting('customGastoCategories', list);
-                }}
-              >
-                <Ionicons name="close-circle" size={16} color={COLORS.purpleLight} />
-              </TouchableOpacity>
-            </View>
-          ))}
-        </View>
       </View>
 
       <View style={styles.section}>
@@ -284,4 +284,16 @@ const styles = StyleSheet.create({
   clItem: { flexDirection: 'row', gap: 8, paddingVertical: 3 },
   clBullet: { color: COLORS.green, fontSize: 14 },
   clText: { flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 19 },
+  levelCard: { marginHorizontal: 16, marginTop: 16, borderRadius: 18, overflow: 'hidden', borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  levelGrad: { padding: 18, gap: 12 },
+  levelTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  levelIconWrap: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
+  levelName: { fontSize: 22, fontWeight: '800', color: COLORS.text },
+  levelPts: { fontSize: 14, color: COLORS.textSub, marginTop: 2 },
+  levelBarBg: { height: 8, backgroundColor: COLORS.card, borderRadius: 4, overflow: 'hidden' },
+  levelBarFill: { height: 8, borderRadius: 4 },
+  levelHint: { fontSize: 12, color: COLORS.textMuted },
+  levelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
+  levelChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.card, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  levelChipTxt: { fontSize: 11, color: COLORS.textSub, fontWeight: '600' },
 });

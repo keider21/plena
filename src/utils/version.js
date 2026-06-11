@@ -1,7 +1,22 @@
 // Sistema de versiones visible para el usuario + registro de cambios.
-export const APP_VERSION = '0.16';
+export const APP_VERSION = '0.17';
 
 export const CHANGELOG = [
+  {
+    v: '0.17',
+    fecha: '2026-06-11',
+    cambios: [
+      'Devuelto el bloque "En qué se fue tu plata" al Inicio (me equivoqué antes, lo quité de donde no era)',
+      'Quitada la sección "Categorías de gasto personalizadas" del Perfil',
+      '🏆 Sistema de niveles y puntos: Bronce → Plata → Oro → Platino → Diamante → Leyenda → Maestro',
+      '+5 pts por hábito hecho hoy, -3 por fallado, +bonus por racha',
+      '+3 pts por movimiento financiero del día, +15 por cada pago de deuda/tarjeta',
+      '+8 pts por bloque del plan cumplido a horario, -5 si hiciste menos de la mitad',
+      '-10 pts si llevás 7+ días sin registrar nada (castiga el abandono)',
+      'Card grande en el Perfil con tu nivel, puntos, barra de progreso y desglose del día',
+      'El bot IA te dice en qué nivel estás y cómo se calculan los puntos',
+    ],
+  },
   {
     v: '0.16',
     fecha: '2026-06-11',
