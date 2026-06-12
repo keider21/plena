@@ -1,7 +1,6 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { getDatabase, ref, set, get, update } from 'firebase/database';
-import * as Google from 'expo-google-app-auth';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCNUTVXgeYrZUyA264YRIwF2G2ZE2IPdrg',
@@ -37,24 +36,6 @@ export async function firebaseLogin(email, password) {
   }
 }
 
-// ─── GOOGLE AUTH ──────────────────────────
-export async function firebaseLoginGoogle() {
-  try {
-    const result = await Google.logInAsync({
-      iosClientId: '155946404852-your-ios-id.apps.googleusercontent.com', // Reemplaza después
-      androidClientId: '155946404852-your-android-id.apps.googleusercontent.com', // Reemplaza después
-    });
-
-    if (result.type === 'success') {
-      const credential = GoogleAuthProvider.credential(result.idToken, result.accessToken);
-      const userCred = await signInWithCredential(auth, credential);
-      return { user: userCred.user, error: null };
-    }
-    return { user: null, error: 'Google login cancelled' };
-  } catch (e) {
-    return { user: null, error: e.message };
-  }
-}
 
 export async function firebaseLogout() {
   try {
@@ -90,5 +71,15 @@ export async function updateFirebase(userId, updates) {
     return { error: null };
   } catch (e) {
     return { error: e.message };
+  }
+}
+
+// ─── APP VERSION CHECK ────────────────────
+export async function checkLatestVersion() {
+  try {
+    const snapshot = await get(ref(db, 'app/version'));
+    return { version: snapshot.val(), error: null };
+  } catch (e) {
+    return { version: null, error: e.message };
   }
 }

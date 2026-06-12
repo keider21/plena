@@ -6,8 +6,9 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { format } from 'date-fns';
-import { auth } from './src/utils/firebase';
+import { auth, checkLatestVersion } from './src/utils/firebase';
 import { useStore } from './src/store/useStore';
+import { Alert } from 'react-native';
 import { setupNotifications, rescheduleAll, snooze, addResponseListener } from './src/utils/notifications';
 import { placementsByDay } from './src/utils/timeOrganizer';
 import { installCrashHandler, installPromiseHandler, getLastCrash } from './src/utils/crashReporter';
@@ -43,6 +44,27 @@ export default function App() {
           placementsByDay: s.planning.schedule ? placementsByDay(s.planning.schedule, s.planning.activities) : null,
         });
       } catch (e) { console.log('[App] Notifications init error:', e); }
+
+      // Check for app updates
+      try {
+        const { version: latestVersion } = await checkLatestVersion();
+        const currentVersion = '1.0.0'; // Update this with your version
+        if (latestVersion && latestVersion > currentVersion) {
+          Alert.alert(
+            '📲 Actualización disponible',
+            `Versión ${latestVersion} está disponible.\n\n¿Descargar e instalar?`,
+            [
+              { text: 'No', style: 'cancel' },
+              {
+                text: 'Sí, actualizar',
+                onPress: () => {
+                  Alert.alert('Descargando...', 'El APK se descargará pronto. Abre manualmente el archivo descargado para instalar.');
+                }
+              }
+            ]
+          );
+        }
+      } catch (e) { console.log('[App] Version check error:', e); }
     });
 
     // Auto-sync con Firebase cuando hay cambios

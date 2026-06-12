@@ -7,7 +7,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
-import { firebaseLoginGoogle, firebaseLogin, firebaseRegister } from '../utils/firebase';
 
 export default function AuthScreen() {
   const [mode, setMode] = useState('login'); // login | register
@@ -18,8 +17,6 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   const { login, register } = useStore();
 
-  const { login, register, syncAllToFirebase } = useStore();
-
   const handleSubmit = async () => {
     if (!email || !password) return Alert.alert('Completa los campos');
     if (mode === 'register' && !name) return Alert.alert('Ingresa tu nombre');
@@ -29,20 +26,6 @@ export default function AuthScreen() {
       : await register(name.trim(), email.trim().toLowerCase(), password);
     setLoading(false);
     if (result.error) Alert.alert('Error', result.error);
-  };
-
-  const handleGoogleLogin = async () => {
-    setLoading(true);
-    const { user, error } = await firebaseLoginGoogle();
-    if (error) {
-      Alert.alert('Error Google', error);
-      setLoading(false);
-      return;
-    }
-    const appUser = { id: user.uid, name: user.displayName || 'Usuario', email: user.email, passwordHash: 'google', createdAt: new Date().toISOString().slice(0, 10) };
-    const result = await register(appUser.name, appUser.email, 'google-' + user.uid);
-    if (!result.error) await syncAllToFirebase(user.uid);
-    setLoading(false);
   };
 
   return (
@@ -121,17 +104,6 @@ export default function AuthScreen() {
                 </Text>
               </Text>
             </TouchableOpacity>
-
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>O continúa con</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity onPress={handleGoogleLogin} activeOpacity={0.8} style={styles.googleBtn}>
-              <Ionicons name="logo-google" size={20} color={COLORS.text} />
-              <Text style={styles.googleText}>Google</Text>
-            </TouchableOpacity>
           </View>
 
           <View style={styles.features}>
@@ -177,9 +149,4 @@ const styles = StyleSheet.create({
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   featureIcon: { width: 32, height: 32, borderRadius: 8, backgroundColor: COLORS.purpleDim, alignItems: 'center', justifyContent: 'center' },
   featureText: { fontSize: 14, color: COLORS.textSub },
-  divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, gap: 10 },
-  dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
-  dividerText: { fontSize: 12, color: COLORS.textMuted },
-  googleBtn: { flexDirection: 'row', backgroundColor: COLORS.bg2, borderRadius: 12, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 0.5, borderColor: COLORS.border },
-  googleText: { color: COLORS.text, fontWeight: '600', fontSize: 15 },
 });
