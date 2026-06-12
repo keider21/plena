@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format, subDays } from 'date-fns';
 import { formatMoney } from '../utils/currency';
 import { loanPending } from '../utils/finance';
+import { syncToFirebase, syncFromFirebase } from '../utils/firebase';
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
 
@@ -629,5 +630,43 @@ export const useStore = create((set, get) => ({
     set({ habits });
     await AsyncStorage.setItem('habits', JSON.stringify(habits));
     return h;
+  },
+
+  // ─── FIREBASE SYNC ───────────────────────
+  syncAllToFirebase: async (userId) => {
+    if (!userId) return { error: 'No user ID' };
+    const state = get();
+    try {
+      await Promise.all([
+        syncToFirebase(userId, 'habits', state.habits),
+        syncToFirebase(userId, 'habitLogs', state.habitLogs),
+        syncToFirebase(userId, 'goals', state.goals),
+        syncToFirebase(userId, 'planning', state.planning),
+        syncToFirebase(userId, 'finance', state.finance),
+        syncToFirebase(userId, 'calendar', state.calendar),
+        syncToFirebase(userId, 'areas', state.areas),
+        syncToFirebase(userId, 'settings', state.settings),
+        syncToFirebase(userId, 'userProfile', state.userProfile),
+      ]);
+      return { error: null };
+    } catch (e) {
+      return { error: e.message };
+    }
+  },
+
+  syncFromFirebase: async (userId) => {
+    if (!userId) return { error: 'No user ID' };
+    try {
+      const keys = ['habits', 'habitLogs', 'goals', 'planning', 'finance', 'calendar', 'areas', 'settings', 'userProfile'];
+      const updates = {};
+      for (const key of keys) {
+        const { data } = await syncFromFirebase(userId, key);
+        if (data) updates[key] = data;
+      }
+      set(updates);
+      return { error: null };
+    } catch (e) {
+      return { error: e.message };
+    }
   },
 }));

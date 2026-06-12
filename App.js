@@ -6,6 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { format } from 'date-fns';
+import { auth } from './src/utils/firebase';
 import { useStore } from './src/store/useStore';
 import { setupNotifications, rescheduleAll, snooze, addResponseListener } from './src/utils/notifications';
 import { placementsByDay } from './src/utils/timeOrganizer';
@@ -44,6 +45,15 @@ export default function App() {
       } catch (e) { console.log('[App] Notifications init error:', e); }
     });
 
+    // Auto-sync con Firebase cuando hay cambios
+    const interval = setInterval(async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const { syncAllToFirebase } = useStore.getState();
+        await syncAllToFirebase(user.uid).catch(() => {});
+      }
+    }, 30000); // Sync cada 30 segundos
+
     const sub = addResponseListener((resp) => {
       const data = resp?.notification?.request?.content?.data || {};
       const action = resp?.actionIdentifier;
@@ -55,7 +65,10 @@ export default function App() {
         else st.logActivity(today, data.id, { status: 'done', pct: 100 });
       }
     });
-    return () => sub.remove();
+    return () => {
+      clearInterval(interval);
+      sub.remove();
+    };
   }, []);
 
   if (!ready) {
