@@ -71,7 +71,8 @@ export const useStore = create((set, get) => ({
   register: async (name, email, password) => {
     const { users } = get();
     if (users.find(u => u.email === email)) return { error: 'El correo ya existe' };
-    const user = { id: Date.now().toString(), name, email, password, createdAt: today() };
+    const hashedPwd = btoa(email + ':' + password); // simple hash con base64
+    const user = { id: Date.now().toString(), name, email, passwordHash: hashedPwd, createdAt: today() };
     const updated = [...users, user];
     set({ users: updated, currentUser: user });
     await AsyncStorage.setItem('users', JSON.stringify(updated));
@@ -81,7 +82,8 @@ export const useStore = create((set, get) => ({
 
   login: async (email, password) => {
     const { users } = get();
-    const user = users.find(u => u.email === email && u.password === password);
+    const hashedPwd = btoa(email + ':' + password);
+    const user = users.find(u => u.email === email && u.passwordHash === hashedPwd);
     if (!user) return { error: 'Correo o contraseña incorrectos' };
     set({ currentUser: user });
     await AsyncStorage.setItem('currentUser', JSON.stringify(user));
@@ -140,6 +142,7 @@ export const useStore = create((set, get) => ({
 
   // ─── SETTINGS ────────────────────────────────────────────
   setCurrency: async (code) => {
+    if (!['PEN', 'USD'].includes(code)) return { error: 'Moneda no válida' };
     const settings = { ...get().settings, currency: code };
     set({ settings });
     await AsyncStorage.setItem('settings', JSON.stringify(settings));

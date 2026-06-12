@@ -41,7 +41,7 @@ export default function App() {
           activities: s.planning.activities,
           placementsByDay: s.planning.schedule ? placementsByDay(s.planning.schedule, s.planning.activities) : null,
         });
-      } catch (e) { /* noop */ }
+      } catch (e) { console.log('[App] Notifications init error:', e); }
     });
 
     const sub = addResponseListener((resp) => {

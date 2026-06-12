@@ -49,6 +49,14 @@ export const CARD_KINDS = [
 ];
 export const cardKind = (k) => CARD_KINDS.find((x) => x.key === k) || CARD_KINDS[0];
 
+export const OCCUPATIONS = [
+  { key: 'empleado', label: 'Empleado' },
+  { key: 'independiente', label: 'Independiente / Freelancer' },
+  { key: 'taxista', label: 'Taxista / Conductor' },
+  { key: 'empresario', label: 'Empresario / Negocio propio' },
+  { key: 'estudiante', label: 'Estudiante' },
+];
+
 // Color único y consistente por categoría (para todos los gráficos)
 const CAT_COLOR_MAP = {
   'Alimentación': '#10B981', 'Transporte': '#0EA5E9', 'Vivienda': '#7C3AED', 'Servicios': '#6366F1',

@@ -78,7 +78,7 @@ export default function OnboardingScreen() {
       }
       for (const l of allLoans) await addLoan(l);
       for (const d of allDebts) await addDebt(d);
-    } catch (e) { /* noop */ }
+    } catch (e) { console.log('[Onboarding] Setup error:', e); }
     await saveProfile({ userId: currentUser?.id, occupation, setupDone: true });
   };
 

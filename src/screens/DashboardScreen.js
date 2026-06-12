@@ -36,7 +36,7 @@ export default function DashboardScreen({ navigation }) {
 
   const activeHabits = habits.filter(h => h.active).slice(0, 4);
   const topGoals = goals.slice(0, 3);
-  const weekDays = ['L', 'M', 'M', 'J', 'V', 'S', 'D'];
+  const weekDays = ['L', 'M', 'X', 'J', 'V', 'S', 'D'];
   const overallPct = stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0;
 
   const avgWeekly = weekly.length > 0 ? Math.round(weekly.reduce((a, b) => a + b, 0) / weekly.length) : 0;

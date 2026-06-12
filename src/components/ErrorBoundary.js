@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
 import { reportCrash } from '../utils/crashReporter';
+import { COLORS } from '../utils/theme';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -39,12 +40,12 @@ export default class ErrorBoundary extends React.Component {
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1, backgroundColor: '#0A0A0F' },
+  bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { padding: 24, paddingTop: 80 },
-  title: { color: '#fff', fontSize: 20, fontWeight: '800' },
-  sub: { color: '#999', fontSize: 13, marginTop: 8, lineHeight: 20 },
-  card: { backgroundColor: '#1A1A24', borderRadius: 12, padding: 14, marginTop: 16 },
-  code: { color: '#fff', fontFamily: 'monospace', fontSize: 12 },
-  btn: { backgroundColor: '#7C3AED', borderRadius: 12, padding: 14, marginTop: 16, alignItems: 'center' },
-  btnText: { color: '#fff', fontWeight: '700' },
+  title: { color: COLORS.text, fontSize: 20, fontWeight: '800' },
+  sub: { color: COLORS.textSub, fontSize: 13, marginTop: 8, lineHeight: 20 },
+  card: { backgroundColor: COLORS.bg2, borderRadius: 12, padding: 14, marginTop: 16 },
+  code: { color: COLORS.text, fontFamily: 'monospace', fontSize: 12 },
+  btn: { backgroundColor: COLORS.purple, borderRadius: 12, padding: 14, marginTop: 16, alignItems: 'center' },
+  btnText: { color: COLORS.text, fontWeight: '700' },
 });

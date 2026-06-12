@@ -49,8 +49,8 @@ export default function ProfileScreen({ navigation }) {
     { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.blue, onPress: handleExport },
     { icon: 'barbell-outline', label: 'Editar mis hábitos', color: COLORS.green, onPress: () => navigation.navigate('Habitos') },
     { icon: 'star-outline', label: 'Editar mis metas', color: COLORS.amber, onPress: () => navigation.navigate('Metas') },
-    { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue },
-    { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub },
+    { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan 100% localmente en tu teléfono. No se envía nada a servidores.') },
+    { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
   ];
 
   return (
