@@ -241,9 +241,12 @@ export default function PlanningScreen({ navigation }) {
     } else {
       // instancia normal (actividad o hueco convertido)
       if (!instEdit.name.trim()) return;
-      const next = ensureToday().map((it) => (it.id === instEdit.id ? { ...it, ...instEdit, name: instEdit.name.trim() } : it));
-      const exists = ensureToday().some((it) => it.id === instEdit.id);
-      await saveDayPlan(todayStr, exists ? next : [...ensureToday(), { id: instEdit.id, activityId: instEdit.activityId || instEdit.id, name: instEdit.name.trim(), icon: instEdit.icon, color: instEdit.color, start: instEdit.start, end: instEdit.end }]);
+      const current = dayPlans[todayStr] || ensureToday();
+      const exists = current.some((it) => it.id === instEdit.id);
+      const next = exists
+        ? current.map((it) => (it.id === instEdit.id ? { ...it, ...instEdit, name: instEdit.name.trim() } : it))
+        : [...current, { id: instEdit.id, activityId: instEdit.activityId || instEdit.id, name: instEdit.name.trim(), icon: instEdit.icon, color: instEdit.color, start: instEdit.start, end: instEdit.end }];
+      await saveDayPlan(todayStr, next);
     }
     setInstEdit(null);
   };
