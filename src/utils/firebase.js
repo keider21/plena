@@ -52,7 +52,7 @@ export async function initializeGoogleSignIn() {
   try {
     GoogleSignin.configure({
       webClientId: '155946404852-tgqk7j7k7j7k7j7k7j7k7j7k7j7k.apps.googleusercontent.com',
-      androidClientId: '171553208129-splf5gg2hj2hj2hj2hj2hj2hj2hj.apps.googleusercontent.com',
+      androidClientId: '171553208129-splf077phv9ba5o7nkvkagtj3dlks7aj.apps.googleusercontent.com',
     });
   } catch (e) {
     console.log('GoogleSignin init error:', e);
