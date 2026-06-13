@@ -6,7 +6,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { format } from 'date-fns';
-import { auth, checkLatestVersion } from './src/utils/firebase';
+import { auth, checkLatestVersion, initializeGoogleSignIn } from './src/utils/firebase';
 import { useStore } from './src/store/useStore';
 import { Alert } from 'react-native';
 import { setupNotifications, rescheduleAll, snooze, addResponseListener } from './src/utils/notifications';
@@ -22,6 +22,7 @@ import { COLORS } from './src/utils/theme';
 // Instalar handlers ANTES de que React monte nada
 installCrashHandler();
 installPromiseHandler();
+initializeGoogleSignIn();
 
 export default function App() {
   const { currentUser, onboardingDone, loadFromStorage } = useStore();

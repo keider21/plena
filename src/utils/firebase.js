@@ -1,6 +1,7 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from 'firebase/auth';
+import { getAuth, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithCredential } from 'firebase/auth';
 import { getDatabase, ref, set, get, update } from 'firebase/database';
+import { GoogleSignin } from '@react-native-google-signin/google-signin';
 
 const firebaseConfig = {
   apiKey: 'AIzaSyCNUTVXgeYrZUyA264YRIwF2G2ZE2IPdrg',
@@ -43,6 +44,30 @@ export async function firebaseLogout() {
     return { error: null };
   } catch (e) {
     return { error: e.message };
+  }
+}
+
+// ─── GOOGLE AUTH (MODERN) ─────────────────
+export async function initializeGoogleSignIn() {
+  try {
+    GoogleSignin.configure({
+      webClientId: '155946404852-tgqk7j7k7j7k7j7k7j7k7j7k7j7k.apps.googleusercontent.com',
+      androidClientId: '171553208129-splf5gg2hj2hj2hj2hj2hj2hj2hj.apps.googleusercontent.com',
+    });
+  } catch (e) {
+    console.log('GoogleSignin init error:', e);
+  }
+}
+
+export async function firebaseLoginGoogle() {
+  try {
+    await GoogleSignin.hasPlayServices();
+    const userInfo = await GoogleSignin.signIn();
+    const credential = GoogleAuthProvider.credential(userInfo.idToken);
+    const userCred = await signInWithCredential(auth, credential);
+    return { user: userCred.user, error: null };
+  } catch (e) {
+    return { user: null, error: e.message };
   }
 }
 
