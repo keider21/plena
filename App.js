@@ -1,3 +1,7 @@
+// Logger debe ser lo primero — captura todos los console.log desde el inicio
+import { installLogger } from './src/utils/logger';
+installLogger();
+
 import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
@@ -20,9 +24,12 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { COLORS } from './src/utils/theme';
 
 // Instalar handlers ANTES de que React monte nada
+console.log('[App] instalando crash handler...');
 installCrashHandler();
 installPromiseHandler();
+console.log('[App] inicializando Google Sign-In...');
 initializeGoogleSignIn();
+console.log('[App] módulos inicializados');
 
 export default function App() {
   const { currentUser, onboardingDone, loadFromStorage } = useStore();
@@ -33,7 +40,9 @@ export default function App() {
     // Cargar último crash al inicio
     getLastCrash().then((c) => { if (c) setLastCrash(c); });
 
+    console.log('[App] cargando storage...');
     loadFromStorage().then(async () => {
+      console.log('[App] storage cargado, iniciando notificaciones...');
       setReady(true);
       try {
         const s = useStore.getState();
@@ -44,7 +53,7 @@ export default function App() {
           activities: s.planning.activities,
           placementsByDay: s.planning.schedule ? placementsByDay(s.planning.schedule, s.planning.activities) : null,
         });
-      } catch (e) { console.log('[App] Notifications init error:', e); }
+      } catch (e) { console.error('[App] Notifications init error:', e); }
 
       // Check for app updates
       try {

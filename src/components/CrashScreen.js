@@ -1,14 +1,18 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Clipboard } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Share } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../utils/theme';
 import { clearLastCrash } from '../utils/crashReporter';
+import { getLogs } from '../utils/logger';
 
 export default function CrashScreen({ crash, onContinue }) {
   const copy = async () => {
     try {
-      await Clipboard.setString(`MESSAGE:\n${crash.message}\n\nSTACK:\n${crash.stack}\n\nAT:\n${crash.at}`);
+      const logs = await getLogs();
+      const logLines = logs.slice(0, 60).map(l => `[${l.level}] ${l.at.slice(11, 23)} ${l.msg}`).join('\n');
+      const text = `=== CRASH ===\nAT: ${crash.at}\nMSG: ${crash.message}\n\nSTACK:\n${crash.stack}\n\n=== ÚLTIMOS LOGS ===\n${logLines}`;
+      await Share.share({ message: text, title: 'Vida Plena – Crash Report' });
     } catch {}
   };
   const dismiss = async () => { await clearLastCrash(); onContinue(); };
@@ -40,8 +44,8 @@ export default function CrashScreen({ crash, onContinue }) {
         </View>
 
         <TouchableOpacity onPress={copy} style={styles.copyBtn}>
-          <Ionicons name="copy-outline" size={18} color="#fff" />
-          <Text style={styles.copyText}>Copiar todo al portapapeles</Text>
+          <Ionicons name="share-outline" size={18} color="#fff" />
+          <Text style={styles.copyText}>Compartir crash + logs completos</Text>
         </TouchableOpacity>
 
         <TouchableOpacity onPress={dismiss} style={styles.continueBtn}>

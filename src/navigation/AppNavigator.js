@@ -21,6 +21,7 @@ import HabitsOnboardingScreen from '../screens/HabitsOnboardingScreen';
 import MentalidadScreen from '../screens/MentalidadScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import PermisosScreen from '../screens/PermisosScreen';
+import DevLogsScreen from '../screens/DevLogsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -77,6 +78,7 @@ export default function AppNavigator() {
       <Stack.Screen name="GoalDetail" component={GoalDetail} />
       <Stack.Screen name="CardCalendar" component={CardCalendar} />
       <Stack.Screen name="HabitsOnboarding" component={HabitsOnboardingScreen} />
+      <Stack.Screen name="DevLogs" component={DevLogsScreen} />
     </Stack.Navigator>
   );
 }
