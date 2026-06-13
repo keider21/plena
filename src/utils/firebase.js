@@ -51,7 +51,7 @@ export async function firebaseLogout() {
 export async function initializeGoogleSignIn() {
   try {
     GoogleSignin.configure({
-      webClientId: '155946404852-tgqk7j7k7j7k7j7k7j7k7j7k7j7k.apps.googleusercontent.com',
+      webClientId: '171553208129-splf077phv9ba5o7nkvkagtj3dlks7aj.apps.googleusercontent.com',
       androidClientId: '171553208129-splf077phv9ba5o7nkvkagtj3dlks7aj.apps.googleusercontent.com',
     });
   } catch (e) {
