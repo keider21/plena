@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, Image } from 'react-native';
-import * as ImagePicker from 'expo-image-picker';
+let ImagePicker = null;
+try { ImagePicker = require('expo-image-picker'); } catch (e) { console.warn('[FinanzasScreen] expo-image-picker no disponible:', e.message); }
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
