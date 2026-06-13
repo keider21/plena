@@ -108,7 +108,7 @@ export default function FinanzasScreen({ navigation, route }) {
       } else {
         const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (status !== 'granted') { Alert.alert('Permiso denegado', 'Habilita el acceso a la galería en ajustes.'); return; }
-        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.5 });
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: true, quality: 0.5 });
       }
       if (!result.canceled && result.assets?.[0]) set('receiptImage', result.assets[0].uri);
     } catch (e) { Alert.alert('Error', 'No se pudo abrir la cámara/galería.'); }
