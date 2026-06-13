@@ -62,7 +62,7 @@ export const useStore = create((set, get) => ({
   settings: DEFAULT_SETTINGS,
   planning: DEFAULT_PLANNING,
   calendar: { events: [], objectives: [] },
-  finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [] },
+  finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [] },
   areas: [], // árbol: [{ id, name, parentId, color, icon, linkedGoalId, linkedHabitId }]
 
   // UI
@@ -117,7 +117,7 @@ export const useStore = create((set, get) => ({
         AsyncStorage.getItem('finance'),
         AsyncStorage.getItem('areas'),
       ]);
-      const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [] };
+      const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [] };
       const savedPlanning = planningRaw ? JSON.parse(planningRaw) : null;
       set({
         users: usersRaw ? JSON.parse(usersRaw) : [],
@@ -537,6 +537,20 @@ export const useStore = create((set, get) => ({
   deleteDebt: async (id) => {
     const f = get().finance;
     await get()._saveFinance({ ...f, debts: f.debts.filter(d => d.id !== id) });
+  },
+
+  addGastoFijo: async (gf) => {
+    const f = get().finance;
+    const item = { id: get()._fid(), currency: get().settings.currency, active: true, ...gf };
+    await get()._saveFinance({ ...f, gastosFijos: [...(f.gastosFijos || []), item] });
+  },
+  updateGastoFijo: async (id, patch) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, gastosFijos: (f.gastosFijos || []).map(g => g.id === id ? { ...g, ...patch } : g) });
+  },
+  deleteGastoFijo: async (id) => {
+    const f = get().finance;
+    await get()._saveFinance({ ...f, gastosFijos: (f.gastosFijos || []).filter(g => g.id !== id) });
   },
 
   // ─── PAGOS de deudas y préstamos (integrados con cuentas/historial/reportes) ──

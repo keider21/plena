@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Alert } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, Image } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -21,6 +22,7 @@ const fmtDate = (d) => format(d, "d 'de' MMM", { locale: es });
 
 const TABS = [
   { key: 'resumen', label: 'Resumen' },
+  { key: 'gastos_fijos', label: 'Fijos' },
   { key: 'cuentas', label: 'Cuentas' },
   { key: 'tarjetas', label: 'Tarjetas' },
   { key: 'prestamos', label: 'Préstamos' },
@@ -96,6 +98,22 @@ export default function FinanzasScreen({ navigation, route }) {
     return next;
   });
 
+  const pickImage = async (source) => {
+    try {
+      let result;
+      if (source === 'camera') {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') { Alert.alert('Permiso denegado', 'Habilita el acceso a la cámara en ajustes.'); return; }
+        result = await ImagePicker.launchCameraAsync({ allowsEditing: true, quality: 0.5 });
+      } else {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') { Alert.alert('Permiso denegado', 'Habilita el acceso a la galería en ajustes.'); return; }
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, allowsEditing: true, quality: 0.5 });
+      }
+      if (!result.canceled && result.assets?.[0]) set('receiptImage', result.assets[0].uri);
+    } catch (e) { Alert.alert('Error', 'No se pudo abrir la cámara/galería.'); }
+  };
+
   const openPay = (mode, item) => {
     Haptics.selectionAsync().catch(() => {});
     setPay({ mode, item, amount: '', accountId: finance.accounts[0]?.id });
@@ -150,10 +168,11 @@ export default function FinanzasScreen({ navigation, route }) {
     }
     const defaults = {
       account: { name: '', type: 'yape', currency: cur, balance: '' },
-      movement: { type: 'gasto', accountId: finance.accounts[0]?.id, toAccountId: finance.accounts[1]?.id, cardId: finance.cards.find((c) => c.kind !== 'debito')?.id, amount: '', category: 'Otros', note: '' },
+      movement: { type: 'gasto', accountId: finance.accounts[0]?.id, toAccountId: finance.accounts[1]?.id, cardId: finance.cards.find((c) => c.kind !== 'debito')?.id, amount: '', category: 'Otros', note: '', time: format(new Date(), 'HH:mm'), receiptImage: null },
       card: { kind: 'credito', bank: '', currency: cur, balance: '', limit: '', used: '', cycleStartDay: '', cutoffDay: '', payDay: '', minPayment: '', totalPayment: '', interest: '' },
       loan: { name: '', lenderType: 'banco', currency: cur, installment: '', installmentsTotal: '', installmentsPaid: '', interest: '', startDate: '', endDate: '' },
       debt: { name: '', creditor: '', currency: cur, amount: '', paid: '', priority: 'media', dueDate: '' },
+      gastoFijo: { name: '', amount: '', currency: cur, category: 'Vivienda', period: 'mensual', dayOfMonth: '1', accountId: finance.accounts[0]?.id || null, note: '', active: true },
     };
     setF(item ? { ...item, balance: item.balance ?? '', amount: item.amount ?? '' } : defaults[type]);
     setModal({ type, id: item?.id });
@@ -184,7 +203,7 @@ export default function FinanzasScreen({ navigation, route }) {
       let res;
       if (f.type === 'pago') {
         if (!f.accountId || !f.cardId) return;
-        res = await store.addTransaction({ type: 'pago', accountId: f.accountId, cardId: f.cardId, amount: num(f.amount), category: null, note: f.note?.trim() || '' });
+        res = await store.addTransaction({ type: 'pago', accountId: f.accountId, cardId: f.cardId, amount: num(f.amount), category: null, note: f.note?.trim() || '', time: f.time || format(new Date(), 'HH:mm') });
       } else {
         const isCard = f.type === 'gasto' && finance.cards.some((c) => c.id === f.accountId);
         res = await store.addTransaction({
@@ -195,6 +214,8 @@ export default function FinanzasScreen({ navigation, route }) {
           amount: num(f.amount),
           category: (f.type === 'ingreso' || f.type === 'gasto') ? f.category : null,
           note: f.note?.trim() || '',
+          time: f.time || format(new Date(), 'HH:mm'),
+          receiptImage: f.receiptImage || null,
         });
       }
       if (res && res.error) { Alert.alert('No se pudo registrar', res.error); return; }
@@ -207,6 +228,9 @@ export default function FinanzasScreen({ navigation, route }) {
     } else if (modal.type === 'debt') {
       const p = { name: f.name?.trim() || 'Deuda', creditor: f.creditor?.trim() || '', currency: f.currency, amount: num(f.amount), paid: num(f.paid), priority: f.priority, dueDate: f.dueDate };
       id ? await store.updateDebt(id, p) : await store.addDebt(p);
+    } else if (modal.type === 'gastoFijo') {
+      const p = { name: f.name?.trim() || 'Gasto fijo', amount: num(f.amount), currency: f.currency, category: f.category, period: f.period || 'mensual', dayOfMonth: num(f.dayOfMonth) || 1, accountId: f.accountId || null, note: f.note?.trim() || '', active: f.active !== false };
+      id ? await store.updateGastoFijo(id, p) : await store.addGastoFijo(p);
     }
     close();
   };
@@ -214,14 +238,14 @@ export default function FinanzasScreen({ navigation, route }) {
   const confirmDel = (label, fn) => Alert.alert('Eliminar', `¿Eliminar ${label}?`, [{ text: 'Cancelar' }, { text: 'Eliminar', style: 'destructive', onPress: fn }]);
 
   const onDeleteCurrent = () => {
-    const fns = { account: store.deleteAccount, card: store.deleteCard, loan: store.deleteLoan, debt: store.deleteDebt };
+    const fns = { account: store.deleteAccount, card: store.deleteCard, loan: store.deleteLoan, debt: store.deleteDebt, gastoFijo: store.deleteGastoFijo };
     const fn = fns[modal.type];
     if (!fn) return;
     confirmDel('este registro', async () => { await fn(modal.id); close(); });
   };
 
   const stats = financeStats(finance.transactions, period);
-  const fabType = { resumen: 'movement', cuentas: 'account', tarjetas: 'card', prestamos: 'loan', deudas: 'debt' }[tab];
+  const fabType = { resumen: 'movement', gastos_fijos: 'gastoFijo', cuentas: 'account', tarjetas: 'card', prestamos: 'loan', deudas: 'debt' }[tab];
 
   return (
     <View style={styles.bg}>
@@ -243,6 +267,9 @@ export default function FinanzasScreen({ navigation, route }) {
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {tab === 'resumen' && (
           <Resumen finance={finance} cur={cur} period={period} setPeriod={setPeriod} stats={stats} onDelTx={(id) => store.deleteTransaction(id)} />
+        )}
+        {tab === 'gastos_fijos' && (
+          <GastosFijos finance={finance} cur={cur} onEdit={(g) => openModal('gastoFijo', g)} onDel={(g) => confirmDel(`"${g.name}"`, () => store.deleteGastoFijo(g.id))} onAdd={() => openModal('gastoFijo')} settings={settings} />
         )}
         {tab === 'cuentas' && (
           <Cuentas finance={finance} cur={cur} onAdd={() => openModal('account')} onMove={() => openModal('movement')}
@@ -321,6 +348,29 @@ export default function FinanzasScreen({ navigation, route }) {
                     </Field>
                   )}
                   <Field label="Nota (opcional)"><TextInput style={styles.input} value={f.note} onChangeText={(v) => set('note', v)} placeholder="Detalle..." placeholderTextColor={COLORS.textMuted} /></Field>
+                  <Field label="Hora">
+                    <TextInput style={styles.input} value={f.time} onChangeText={(v) => set('time', v)} placeholder="HH:MM" placeholderTextColor={COLORS.textMuted} keyboardType="numbers-and-punctuation" />
+                  </Field>
+                  <Field label="Foto de boleta (opcional)">
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      <TouchableOpacity style={styles.photoBtn} onPress={() => pickImage('camera')}>
+                        <Ionicons name="camera-outline" size={18} color={COLORS.purpleLight} />
+                        <Text style={styles.photoBtnText}>Cámara</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.photoBtn} onPress={() => pickImage('library')}>
+                        <Ionicons name="image-outline" size={18} color={COLORS.purpleLight} />
+                        <Text style={styles.photoBtnText}>Galería</Text>
+                      </TouchableOpacity>
+                    </View>
+                    {f.receiptImage ? (
+                      <View style={{ marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Image source={{ uri: f.receiptImage }} style={{ width: 64, height: 64, borderRadius: 8 }} />
+                        <TouchableOpacity onPress={() => set('receiptImage', null)}>
+                          <Text style={{ color: COLORS.red, fontSize: 13 }}>Eliminar foto</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+                  </Field>
                 </>
               )}
               {modal?.type === 'card' && (
@@ -383,6 +433,28 @@ export default function FinanzasScreen({ navigation, route }) {
                   </Row>
                   <Field label="Prioridad"><Chips options={DEBT_PRIORITIES} value={f.priority} onChange={(v) => set('priority', v)} /></Field>
                   <Field label="Fecha límite"><TextInput style={styles.input} value={f.dueDate} onChangeText={(v) => set('dueDate', v)} placeholder="Ej. 30/06/2026" placeholderTextColor={COLORS.textMuted} /></Field>
+                </>
+              )}
+              {modal?.type === 'gastoFijo' && (
+                <>
+                  <Field label="Nombre"><TextInput style={styles.input} value={f.name} onChangeText={(v) => set('name', v)} placeholder="Ej. Alquiler, Netflix, Luz..." placeholderTextColor={COLORS.textMuted} /></Field>
+                  <Field label="Moneda"><Chips options={CUR_OPTS} value={f.currency} onChange={(v) => set('currency', v)} /></Field>
+                  <Field label="Monto"><TextInput style={styles.input} value={String(f.amount)} onChangeText={(v) => set('amount', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                  <Field label="Categoría">
+                    <Dropdown options={userCategories(settings).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
+                  </Field>
+                  <Field label="Frecuencia">
+                    <Chips options={[{ key: 'mensual', label: 'Mensual' }, { key: 'semanal', label: 'Semanal' }, { key: 'anual', label: 'Anual' }]} value={f.period} onChange={(v) => set('period', v)} />
+                  </Field>
+                  <Field label="Día de vencimiento">
+                    <TextInput style={styles.input} value={String(f.dayOfMonth)} onChangeText={(v) => set('dayOfMonth', v)} keyboardType="numeric" placeholder="Ej. 5 (día del mes)" placeholderTextColor={COLORS.textMuted} />
+                  </Field>
+                  {finance.accounts.length > 0 && (
+                    <Field label="Cuenta de débito (opcional)">
+                      <Chips options={[{ key: null, label: 'Sin cuenta' }, ...finance.accounts.map((a) => ({ key: a.id, label: a.name }))]} value={f.accountId} onChange={(v) => set('accountId', v)} />
+                    </Field>
+                  )}
+                  <Field label="Nota (opcional)"><TextInput style={styles.input} value={f.note} onChangeText={(v) => set('note', v)} placeholder="Descripción..." placeholderTextColor={COLORS.textMuted} /></Field>
                 </>
               )}
             </ScrollView>
@@ -477,7 +549,7 @@ export default function FinanzasScreen({ navigation, route }) {
 }
 
 function titleFor(modal) {
-  return { account: 'Cuenta', movement: 'Movimiento', card: 'Tarjeta de crédito', loan: 'Préstamo', debt: 'Deuda' }[modal.type];
+  return { account: 'Cuenta', movement: 'Movimiento', card: 'Tarjeta de crédito', loan: 'Préstamo', debt: 'Deuda', gastoFijo: 'Gasto fijo recurrente' }[modal.type];
 }
 const Row = ({ children }) => <View style={{ flexDirection: 'row', gap: 12 }}>{children}</View>;
 const Half = ({ label, children }) => <View style={{ flex: 1, marginBottom: 14 }}><Text style={styles.fLabel}>{label}</Text>{children}</View>;
@@ -552,9 +624,12 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
             return (
               <View key={t.id} style={styles.txRow}>
                 <Ionicons name={tt.icon} size={20} color={tt.color} />
+                {t.receiptImage ? (
+                  <Image source={{ uri: t.receiptImage }} style={{ width: 36, height: 36, borderRadius: 6 }} />
+                ) : null}
                 <View style={{ flex: 1 }}>
                   <Text style={styles.txTitle}>{t.note || t.category || tt.label}</Text>
-                  <Text style={styles.txSub}>{srcName(t)}{t.type === 'transferencia' ? ` → ${accName(t.toAccountId)}` : ''} · {t.date}</Text>
+                  <Text style={styles.txSub}>{srcName(t)}{t.type === 'transferencia' ? ` → ${accName(t.toAccountId)}` : ''} · {t.date}{t.time ? ` ${t.time}` : ''}</Text>
                 </View>
                 <Text style={[styles.txAmt, { color: tt.color }]}>{sign}{formatMoney(t.amount, cur)}</Text>
                 <TouchableOpacity onPress={() => onDelTx(t.id)} style={{ padding: 4 }}><Ionicons name="close" size={16} color={COLORS.textMuted} /></TouchableOpacity>
@@ -767,6 +842,41 @@ function Deudas({ finance, onEdit, onDel, onAdd, onPay, onHistory }) {
   );
 }
 
+const PERIOD_LABELS = { mensual: 'Mensual', semanal: 'Semanal', anual: 'Anual' };
+const PERIOD_MULT = { mensual: 1, semanal: 4.33, anual: 1 / 12 };
+
+function GastosFijos({ finance, cur, onEdit, onDel, onAdd, settings }) {
+  const lista = finance.gastosFijos || [];
+  const monthlyTotal = lista
+    .filter((g) => g.active !== false)
+    .reduce((s, g) => s + (g.amount || 0) * (PERIOD_MULT[g.period] || 1), 0);
+
+  if (lista.length === 0) {
+    return <EmptyState icon="repeat-outline" title="Sin gastos fijos" subtitle="Registra tus gastos recurrentes: alquiler, servicios, suscripciones, etc." actionLabel="Agregar gasto fijo" onAction={onAdd} />;
+  }
+  return (
+    <View>
+      <View style={styles.totalCard}>
+        <Text style={styles.statLbl}>Total fijos al mes (estimado)</Text>
+        <Text style={[styles.totalVal, { color: COLORS.red }]}>{formatMoney(monthlyTotal, cur)}</Text>
+      </View>
+      {lista.map((g) => (
+        <TouchableOpacity key={g.id} style={[styles.listCard, !g.active && { opacity: 0.45 }]} onPress={() => onEdit(g)} onLongPress={() => onDel(g)} activeOpacity={0.8}>
+          <View style={[styles.listIcon, { backgroundColor: categoryColor(g.category) + '22' }]}>
+            <Ionicons name="repeat-outline" size={20} color={categoryColor(g.category)} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.listTitle}>{g.name}</Text>
+            <Text style={styles.listSub}>{PERIOD_LABELS[g.period] || 'Mensual'} · día {g.dayOfMonth || 1}{g.category ? ` · ${g.category}` : ''}</Text>
+          </View>
+          <Text style={[styles.listAmt, { color: COLORS.red }]}>{formatMoney(g.amount, g.currency)}</Text>
+        </TouchableOpacity>
+      ))}
+      <Text style={styles.tip}>Toca para editar · mantén presionado para eliminar</Text>
+    </View>
+  );
+}
+
 const Mini = ({ label, val }) => <View style={styles.mini}><Text style={styles.miniLbl}>{label}</Text><Text style={styles.miniVal}>{val}</Text></View>;
 
 const styles = StyleSheet.create({
@@ -868,6 +978,9 @@ const styles = StyleSheet.create({
   histAmt: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   histSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   histDate: { fontSize: 12, color: COLORS.textSub, fontWeight: '600' },
+  // estilos para foto de boleta
+  photoBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.purple + '66', backgroundColor: COLORS.bg3 },
+  photoBtnText: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '600' },
   // estilos para búsqueda
   searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 0.5, borderColor: COLORS.cardBorder, marginBottom: 10 },
   searchInput: { flex: 1, color: COLORS.text, fontSize: 13, paddingVertical: 0 },
