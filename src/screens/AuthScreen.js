@@ -16,8 +16,6 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, register } = useStore();
-
   const { login, register, syncAllToFirebase } = useStore();
 
   const handleSubmit = async () => {
