@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -384,19 +383,28 @@ export default function AsistenteIAScreen() {
   const store = useStore();
   const [messages, setMessages] = useState([WELCOME]);
   const [text, setText] = useState('');
+  const [ratings, setRatings] = useState({});
   const scrollRef = useRef(null);
 
   const send = (msg) => {
     const t = (msg ?? text).trim();
     if (!t) return;
     Haptics.selectionAsync().catch(() => {});
-    const userMsg = { from: 'user', text: t };
+    const convId = `ia_${Date.now()}`;
     const answer = buildAnswer(t, store);
-    const iaMsg = { from: 'ia', text: answer.text };
+    const userMsg = { from: 'user', text: t };
+    const iaMsg = { from: 'ia', text: answer.text, convId };
     setMessages((m) => [...m, userMsg, iaMsg]);
     setText('');
+    store.saveAiConversation({ id: convId, question: t, answer: answer.text });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const rate = (convId, value) => {
+    setRatings(r => ({ ...r, [convId]: value }));
+    store.rateAiConversation(convId, value);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
   const voice = () => Alert.alert('Voz en desarrollo', 'El dictado por voz necesita un módulo nativo. Lo activaremos con un development build más adelante.');
@@ -414,7 +422,7 @@ export default function AsistenteIAScreen() {
 
   return (
     <View style={styles.bg}>
-      <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
+      <View style={styles.hero}>
         <View style={styles.heroRow}>
           <View style={styles.heroIcon}><Ionicons name="sparkles" size={20} color="#fff" /></View>
           <View style={{ flex: 1 }}>
@@ -425,15 +433,29 @@ export default function AsistenteIAScreen() {
             <Text style={styles.versionChipText}>v{APP_VERSION}</Text>
           </View>
         </View>
-      </LinearGradient>
+      </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={styles.chat} showsVerticalScrollIndicator={false}>
           {messages.map((m, i) => (
-            <View key={i} style={[styles.bubble, m.from === 'user' ? styles.bubbleUser : styles.bubbleIA]}>
-              <Text style={[styles.bubbleText, m.from === 'user' && { color: '#fff' }]}>
-                {renderText(m.text)}
-              </Text>
+            <View key={i} style={m.from === 'ia' ? { alignSelf: 'flex-start', maxWidth: '88%' } : null}>
+              <View style={[styles.bubble, m.from === 'user' ? styles.bubbleUser : styles.bubbleIA]}>
+                <Text style={[styles.bubbleText, m.from === 'user' && { color: '#fff' }]}>
+                  {renderText(m.text)}
+                </Text>
+              </View>
+              {m.from === 'ia' && m.convId && (
+                <View style={styles.feedbackRow}>
+                  <TouchableOpacity onPress={() => rate(m.convId, 'up')} style={[styles.feedbackBtn, ratings[m.convId] === 'up' && styles.feedbackBtnOn]}>
+                    <Ionicons name={ratings[m.convId] === 'up' ? 'thumbs-up' : 'thumbs-up-outline'} size={14} color={ratings[m.convId] === 'up' ? COLORS.green : COLORS.textMuted} />
+                    <Text style={[styles.feedbackTxt, ratings[m.convId] === 'up' && { color: COLORS.green }]}>Útil</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => rate(m.convId, 'down')} style={[styles.feedbackBtn, ratings[m.convId] === 'down' && { ...styles.feedbackBtnOn, borderColor: COLORS.red + '55' }]}>
+                    <Ionicons name={ratings[m.convId] === 'down' ? 'thumbs-down' : 'thumbs-down-outline'} size={14} color={ratings[m.convId] === 'down' ? COLORS.red : COLORS.textMuted} />
+                    <Text style={[styles.feedbackTxt, ratings[m.convId] === 'down' && { color: COLORS.red }]}>Incorrecta</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           ))}
 
@@ -471,7 +493,7 @@ export default function AsistenteIAScreen() {
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
-  hero: { padding: 20, paddingTop: 54, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
+  hero: { padding: 20, paddingTop: 54, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center' },
   heroTitle: { fontSize: 20, fontWeight: '800', color: COLORS.text },
@@ -487,6 +509,10 @@ const styles = StyleSheet.create({
   examplesTitle: { fontSize: 12, color: COLORS.textSub, marginBottom: 2 },
   exChip: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.bg2, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: COLORS.cardBorder },
   exText: { flex: 1, fontSize: 13, color: COLORS.textSub },
+  feedbackRow: { flexDirection: 'row', gap: 6, marginTop: 4, paddingLeft: 2 },
+  feedbackBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10, backgroundColor: COLORS.card, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  feedbackBtnOn: { borderColor: COLORS.green + '55', backgroundColor: COLORS.greenDim },
+  feedbackTxt: { fontSize: 11, color: COLORS.textMuted },
   inputBar: { flexDirection: 'row', alignItems: 'flex-end', gap: 8, paddingHorizontal: 12, paddingVertical: 10, backgroundColor: COLORS.bg2, borderTopWidth: 0.5, borderTopColor: COLORS.cardBorder },
   micBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: COLORS.cardBorder },
   input: { flex: 1, maxHeight: 110, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, color: COLORS.text, fontSize: 15, borderWidth: 0.5, borderColor: COLORS.cardBorder },

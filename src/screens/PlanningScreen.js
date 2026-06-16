@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Animated, Modal, TextInput, Alert } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { format, subDays } from 'date-fns';
+import { format, subDays, addWeeks, startOfWeek, addDays } from 'date-fns';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import EmptyState from '../components/EmptyState';
 import LineChart from '../components/LineChart';
 import TimePickerField from '../components/TimePickerField';
-import { snooze } from '../utils/notifications';
+import { snooze, reschedulePlan } from '../utils/notifications';
 import {
   WEEKDAYS, buildDayTable, buildDayWith, instancesFromTemplate, suggestPlacements, toTime, toMin, minutesToLabel,
 } from '../utils/timeOrganizer';
@@ -34,7 +33,8 @@ export default function PlanningScreen({ navigation }) {
   const log = planning.log || {};
   const dayPlans = planning.dayPlans || {};
   const todayN = new Date().getDay();
-  const [day, setDay] = useState(todayN);
+  const [selDayN, setSelDayN] = useState(todayN);
+  const [weekOffset, setWeekOffset] = useState(0);
   const [tick, setTick] = useState(0);
   const [session, setSession] = useState(null);
   const [gap, setGap] = useState(null);
@@ -56,6 +56,12 @@ export default function PlanningScreen({ navigation }) {
   }, [pulse]);
 
   const todayStr = format(new Date(), 'yyyy-MM-dd');
+  const weekStart = startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 });
+  const weekDates = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(weekStart, i);
+    return { date: format(d, 'yyyy-MM-dd'), dayN: d.getDay(), short: WEEKDAYS.find(w => w.n === d.getDay())?.short || '', num: format(d, 'd') };
+  });
+  const selDate = weekDates.find(d => d.dayN === selDayN)?.date || todayStr;
 
   useEffect(() => {
     if (!session) return;
@@ -71,10 +77,10 @@ export default function PlanningScreen({ navigation }) {
   if (!schedule) {
     return (
       <ScrollView style={styles.bg} contentContainerStyle={{ flexGrow: 1 }}>
-        <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
+        <View style={styles.hero}>
           <Text style={styles.heroTitle}>Planificación de vida</Text>
           <Text style={styles.heroSub}>Tu día, semana, mes y año — organizados.</Text>
-        </LinearGradient>
+        </View>
         <EmptyState
           icon="calendar-outline"
           title="Aún no configuras tu día"
@@ -90,16 +96,21 @@ export default function PlanningScreen({ navigation }) {
     );
   }
 
-  const isToday = day === todayN;
-  const dayLog = isToday ? (log[todayStr] || {}) : {};
+  const isToday = selDate === todayStr;
+  const dayLog = log[selDate] || {};
+
+  // Per-day sleep/wake override (stored as { kind: 'sleepOverride', wakeTime, sleepTime } in dayPlans[todayStr])
+  const todaySleepOvr = (dayPlans[todayStr] || []).find(it => it.kind === 'sleepOverride');
+  const effectiveWakeTime = (isToday && todaySleepOvr) ? todaySleepOvr.wakeTime : schedule.wakeTime;
+  const effectiveSleepTime = (isToday && todaySleepOvr) ? todaySleepOvr.sleepTime : schedule.sleepTime;
 
   // Instancias de HOY (lo que el usuario fijó para hoy) o la plantilla materializada
   const todayInstances = dayPlans[todayStr] || instancesFromTemplate(schedule, todayN, activities, todayStr);
   const ensureToday = () => (dayPlans[todayStr] ? [...dayPlans[todayStr]] : instancesFromTemplate(schedule, todayN, activities, todayStr));
 
   // Tabla: hoy desde instancias (editable); otros días desde la plantilla (solo lectura)
-  const table = isToday ? buildDayWith(schedule, todayN, todayInstances) : buildDayTable(schedule, day, activities);
-  const placements = suggestPlacements(schedule, day, activities);
+  const table = isToday ? buildDayWith(schedule, todayN, todayInstances) : buildDayTable(schedule, selDayN, activities);
+  const placements = suggestPlacements(schedule, selDayN, activities);
   const notPlaced = isToday ? [] : placements.filter((p) => !p.placed);
 
   // hora actual
@@ -117,7 +128,7 @@ export default function PlanningScreen({ navigation }) {
   }
 
   // cumplimiento de hoy (según las actividades planificadas hoy)
-  const todayActIds = todayInstances.map((it) => it.activityId);
+  const todayActIds = todayInstances.filter(it => it.activityId && it.kind !== 'sleepOverride' && it.kind !== 'fixedOverride').map((it) => it.activityId);
   const todayPcts = todayActIds.map((id) => log[todayStr]?.[id]?.pct ?? 0);
   const compliance = todayPcts.length ? Math.round(todayPcts.reduce((a, b) => a + b, 0) / todayPcts.length) : 0;
 
@@ -140,7 +151,7 @@ export default function PlanningScreen({ navigation }) {
   }));
   const series = seriesActs.map((a) => ({ label: a.name, color: a.color, data: days7.map((d) => log[d.str]?.[a.id]?.pct ?? 0) }));
 
-  const sleepDur = ((toMin(schedule.wakeTime) - toMin(schedule.sleepTime)) + 1440) % 1440;
+  const sleepDur = ((toMin(effectiveWakeTime) - toMin(effectiveSleepTime)) + 1440) % 1440;
 
   const elapsedSec = session ? (session.accumulatedSec + (session.runningSince ? Math.floor((Date.now() - session.runningSince) / 1000) : 0)) : 0;
   const pctOf = (sec) => (session ? Math.max(0, Math.min(100, Math.round((sec / 60 / session.durMin) * 100))) : 0);
@@ -171,6 +182,13 @@ export default function PlanningScreen({ navigation }) {
     }
   };
 
+  // Reprograma las alarmas nativas usando el estado más reciente del plan
+  // (incluye los cambios manuales por día). Se llama tras cada edición.
+  const refreshAlarms = () => {
+    const { planning: pl, habits: hb } = useStore.getState();
+    reschedulePlan(pl, hb).catch(() => {});
+  };
+
   // Llenar hueco → crea una instancia SOLO para hoy (no toca la plantilla → sin duplicados)
   const openGap = (seg) => { setGapName(''); setGap(seg); };
   const fillGap = async (name, color, icon, activityId) => {
@@ -178,6 +196,7 @@ export default function PlanningScreen({ navigation }) {
     const id = 'inst_' + Date.now();
     const inst = { id, activityId: activityId || id, name: name.trim(), icon: icon || 'flash-outline', color: color || COLORS.purple, start: toTime(gap.start), end: toTime(gap.end) };
     await saveDayPlan(todayStr, [...ensureToday(), inst]);
+    refreshAlarms();
     setGap(null); setGapName('');
   };
 
@@ -220,9 +239,22 @@ export default function PlanningScreen({ navigation }) {
       });
       return;
     }
+    // Caso 4: bloque de sueño → cambia las horas de dormir/despertar solo para hoy
+    if (seg.type === 'sleep') {
+      setInstEdit({ kind: 'sleepOverride', start: effectiveSleepTime, end: effectiveWakeTime });
+      return;
+    }
   };
   const saveInstEdit = async () => {
     if (!instEdit) return;
+    if (instEdit.kind === 'sleepOverride') {
+      const ovr = { kind: 'sleepOverride', sleepTime: instEdit.start, wakeTime: instEdit.end, appliedTo: todayStr };
+      const base = dayPlans[todayStr] ?? instancesFromTemplate(schedule, todayN, activities, todayStr);
+      await saveDayPlan(todayStr, [...base.filter(x => x.kind !== 'sleepOverride'), ovr]);
+      refreshAlarms();
+      setInstEdit(null);
+      return;
+    }
     if (instEdit.kind === 'fixedOverride') {
       // override de un bloque fijo SOLO para hoy
       const ovr = {
@@ -248,10 +280,17 @@ export default function PlanningScreen({ navigation }) {
         : [...current, { id: instEdit.id, activityId: instEdit.activityId || instEdit.id, name: instEdit.name.trim(), icon: instEdit.icon, color: instEdit.color, start: instEdit.start, end: instEdit.end }];
       await saveDayPlan(todayStr, next);
     }
+    refreshAlarms();
     setInstEdit(null);
   };
   const deleteInst = async () => {
     if (!instEdit) return;
+    if (instEdit.kind === 'sleepOverride') {
+      await saveDayPlan(todayStr, (dayPlans[todayStr] || []).filter(x => x.kind !== 'sleepOverride'));
+      refreshAlarms();
+      setInstEdit(null);
+      return;
+    }
     if (instEdit.kind === 'fixedOverride') {
       // eliminar el override = volver al bloque original
       const arr = (dayPlans[todayStr] || []).filter((x) => !(x.kind === 'fixedOverride' && x.id === instEdit.id));
@@ -259,6 +298,7 @@ export default function PlanningScreen({ navigation }) {
     } else {
       await saveDayPlan(todayStr, ensureToday().filter((it) => it.id !== instEdit.id));
     }
+    refreshAlarms();
     setInstEdit(null);
   };
 
@@ -266,7 +306,7 @@ export default function PlanningScreen({ navigation }) {
 
   return (
     <ScrollView style={styles.bg} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-      <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
+      <View style={styles.hero}>
         <View style={styles.heroTop}>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroTitle}>Mi plan</Text>
@@ -276,21 +316,29 @@ export default function PlanningScreen({ navigation }) {
             )}
           </View>
           <TouchableOpacity style={styles.editBtn} onPress={() => navigation.navigate('PlanningWizard')}>
-            <Ionicons name="create-outline" size={18} color={COLORS.purpleLight} />
+            <Ionicons name="create-outline" size={18} color={COLORS.purple} />
             <Text style={styles.editText}>Editar plan</Text>
           </TouchableOpacity>
         </View>
-      </LinearGradient>
+      </View>
 
       <View style={styles.daySelector}>
-        {WEEKDAYS.map((d) => {
-          const sel = d.n === day;
+        <TouchableOpacity onPress={() => setWeekOffset(o => o - 1)} style={styles.weekNavBtn}>
+          <Ionicons name="chevron-back" size={18} color={COLORS.textSub} />
+        </TouchableOpacity>
+        {weekDates.map((d) => {
+          const sel = d.dayN === selDayN;
+          const isT = d.date === todayStr;
           return (
-            <TouchableOpacity key={d.n} onPress={() => setDay(d.n)} style={[styles.dayBtn, sel && styles.dayBtnOn]}>
+            <TouchableOpacity key={d.dayN} onPress={() => setSelDayN(d.dayN)} style={[styles.dayBtn, sel && styles.dayBtnOn, isT && !sel && styles.dayBtnToday]}>
               <Text style={[styles.dayBtnText, sel && styles.dayBtnTextOn]}>{d.short}</Text>
+              <Text style={[styles.dayBtnNum, sel && styles.dayBtnNumOn]}>{d.num}</Text>
             </TouchableOpacity>
           );
         })}
+        <TouchableOpacity onPress={() => setWeekOffset(o => Math.min(0, o + 1))} style={styles.weekNavBtn} disabled={weekOffset >= 0}>
+          <Ionicons name="chevron-forward" size={18} color={weekOffset >= 0 ? COLORS.bg3 : COLORS.textSub} />
+        </TouchableOpacity>
       </View>
 
       {isToday && currentSeg && (
@@ -358,7 +406,7 @@ export default function PlanningScreen({ navigation }) {
 
       {/* TABLA del día */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📋 {isToday ? 'Tu día (Hoy)' : `Plan de ${WEEKDAYS.find((d) => d.n === day)?.label}`}</Text>
+        <Text style={styles.sectionTitle}>📋 {isToday ? 'Tu día (Hoy)' : `Plan del ${weekDates.find(d => d.dayN === selDayN)?.num} — ${WEEKDAYS.find(d => d.n === selDayN)?.label}`}</Text>
         <View style={styles.table}>
           {table.segments.map((s, i) => {
             const logE = isToday && s.type === 'activity' ? dayLog[s.activityId] : null;
@@ -369,48 +417,64 @@ export default function PlanningScreen({ navigation }) {
             const isCur = rem != null;
             const editable = isToday && (s.type === 'activity' ? !!s.instanceId : (s.type === 'hole' || s.type === 'work' || s.type === 'meal' || s.type === 'nap' || s.type === 'fixed'));
             return (
-              <TouchableOpacity
-                key={i}
-                activeOpacity={editable ? 0.6 : 1}
-                onLongPress={() => openInstEdit(s)}
-                onPress={() => editable ? openInstEdit(s) : null}
-                delayLongPress={300}
-                style={[styles.tRow, type === 'hole' && styles.tRowHole, isCur && styles.tRowCurrent]}
-              >
-                {isCur && (<Animated.View pointerEvents="none" style={[styles.curGlow, { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.2, 0.7] }) }]} />)}
-                <Text style={styles.tTime}>{toTime(s.start)}</Text>
-                <View style={[styles.tBar, { backgroundColor: segColor(type, s.color) }]} />
-                <View style={styles.tBody}>
-                  <Text style={[styles.tLabel, type === 'hole' && { color: COLORS.red, fontWeight: '700' }]}>{label}{editable ? ' ✎' : ''}</Text>
-                  <Text style={styles.tRange}>{toTime(s.start)}–{toTime(s.end)}</Text>
-                </View>
-                {isCur ? (
-                  <View style={styles.nowChip}><Text style={styles.nowChipText}>⏱ {fmtClock(rem)}</Text></View>
-                ) : logE && logE.status !== 'rejected' ? (
-                  <View style={styles.doneChip}><Ionicons name="checkmark" size={12} color={COLORS.green} /><Text style={styles.doneChipText}>{logE.pct}%</Text></View>
-                ) : (type === 'hole' && isToday) ? (
-                  <TouchableOpacity style={styles.fillBtn} onPress={() => openGap(s)}>
-                    <Ionicons name="add" size={14} color={COLORS.purpleLight} /><Text style={styles.fillText}>{minutesToLabel(s.duration)}</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <Text style={[styles.tDur, type === 'hole' && { color: COLORS.red }]}>{minutesToLabel(s.duration)}</Text>
+              <React.Fragment key={i}>
+                {isToday && isCur && (
+                  <View style={styles.nowLine}>
+                    <View style={styles.nowLineDot} />
+                    <Text style={styles.nowLineText}>▼ {toTime(Math.round(nowMin) % 1440)}</Text>
+                    <View style={styles.nowLineBar} />
+                  </View>
                 )}
-              </TouchableOpacity>
+                <TouchableOpacity
+                  activeOpacity={editable ? 0.6 : 1}
+                  onLongPress={() => openInstEdit(s)}
+                  onPress={() => editable ? openInstEdit(s) : null}
+                  delayLongPress={300}
+                  style={[styles.tRow, type === 'hole' && styles.tRowHole, isCur && styles.tRowCurrent]}
+                >
+                  {isCur && (<Animated.View pointerEvents="none" style={[styles.curGlow, { opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.2, 0.7] }) }]} />)}
+                  <Text style={styles.tTime}>{toTime(s.start)}</Text>
+                  <View style={[styles.tBar, { backgroundColor: segColor(type, s.color) }]} />
+                  <View style={styles.tBody}>
+                    <Text style={[styles.tLabel, type === 'hole' && { color: COLORS.red, fontWeight: '700' }]}>{label}{editable ? ' ✎' : ''}</Text>
+                    <Text style={styles.tRange}>{toTime(s.start)}–{toTime(s.end)}</Text>
+                  </View>
+                  {isCur ? (
+                    <View style={styles.nowChip}><Text style={styles.nowChipText}>⏱ {fmtClock(rem)}</Text></View>
+                  ) : logE && logE.status !== 'rejected' ? (
+                    <View style={styles.doneChip}><Ionicons name="checkmark" size={12} color={COLORS.green} /><Text style={styles.doneChipText}>{logE.pct}%</Text></View>
+                  ) : (type === 'hole' && isToday) ? (
+                    <TouchableOpacity style={styles.fillBtn} onPress={() => openGap(s)}>
+                      <Ionicons name="add" size={14} color={COLORS.purpleLight} /><Text style={styles.fillText}>{minutesToLabel(s.duration)}</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={[styles.tDur, type === 'hole' && { color: COLORS.red }]}>{minutesToLabel(s.duration)}</Text>
+                  )}
+                </TouchableOpacity>
+              </React.Fragment>
             );
           })}
           {/* Dormir */}
           <TouchableOpacity
             activeOpacity={isToday ? 0.6 : 1}
-            onPress={() => isToday ? openInstEdit({ type: 'fixed', label: 'Dormir', icon: 'moon-outline', color: COLORS.indigo, start: toMin(schedule.sleepTime), end: (toMin(schedule.sleepTime) + 1440) % 1440 < toMin(schedule.wakeTime) ? toMin(schedule.wakeTime) + 1440 : toMin(schedule.wakeTime) }) : null}
-            onLongPress={() => isToday ? openInstEdit({ type: 'fixed', label: 'Dormir', icon: 'moon-outline', color: COLORS.indigo, start: toMin(schedule.sleepTime), end: (toMin(schedule.sleepTime) + 1440) % 1440 < toMin(schedule.wakeTime) ? toMin(schedule.wakeTime) + 1440 : toMin(schedule.wakeTime) }) : null}
+            onPress={() => isToday ? openInstEdit({ type: 'sleep' }) : null}
+            onLongPress={() => isToday ? openInstEdit({ type: 'sleep' }) : null}
             style={[styles.tRow, { backgroundColor: COLORS.bg2 }]}
           >
-            <Text style={styles.tTime}>{schedule.sleepTime}</Text>
+            <Text style={styles.tTime}>{effectiveSleepTime}</Text>
             <View style={[styles.tBar, { backgroundColor: COLORS.indigo }]} />
-            <View style={styles.tBody}><Text style={styles.tLabel}>😴 Dormir{isToday ? ' ✎' : ''}</Text><Text style={styles.tRange}>{schedule.sleepTime}–{schedule.wakeTime}</Text></View>
+            <View style={styles.tBody}><Text style={styles.tLabel}>😴 Dormir{isToday ? ' ✎' : ''}</Text><Text style={styles.tRange}>{effectiveSleepTime}–{effectiveWakeTime}</Text></View>
             <Text style={styles.tDur}>{minutesToLabel(sleepDur)}</Text>
           </TouchableOpacity>
         </View>
+        {table.overlapping?.length > 0 && (
+          <View style={styles.overlapWarn}>
+            <Ionicons name={'warning-outline'} size={14} color={COLORS.amber} />
+            <Text style={styles.overlapWarnText}>
+              {table.overlapping.length} bloque{table.overlapping.length > 1 ? 's' : ''} superpuesto{table.overlapping.length > 1 ? 's' : ''}: {table.overlapping.map(o => o.label).join(', ')}
+            </Text>
+          </View>
+        )}
         <Text style={styles.legendInline}>
           {isToday ? 'Toca o mantén presionada una fila para editarla (cambia nombre, hora, color) — los cambios solo aplican a HOY' : 'Vista del plan. Para cambiarlo usa “Editar plan”.'}
         </Text>
@@ -441,35 +505,42 @@ export default function PlanningScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* Modal: editar actividad (solo hoy) */}
+      {/* Modal: editar actividad / horas de sueño (solo hoy) */}
       <Modal visible={!!instEdit} transparent animationType="slide" onRequestClose={() => setInstEdit(null)}>
         <View style={styles.gapBackdrop}>
           <View style={styles.gapSheet}>
             <View style={styles.gapHead}>
-              <Text style={styles.gapTitle}>Editar (solo hoy)</Text>
+              <Text style={styles.gapTitle}>{instEdit?.kind === 'sleepOverride' ? 'Horario de sueño (solo hoy)' : 'Editar (solo hoy)'}</Text>
               <TouchableOpacity onPress={() => setInstEdit(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
             </View>
             {instEdit && (
               <>
-                <Text style={styles.gapSub}>Cambiar actividad:</Text>
-                <View style={styles.gapChips}>
-                  {activities.map((a) => {
-                    const sel = instEdit.name === a.name;
-                    return (
-                      <TouchableOpacity key={a.id} style={[styles.gapChip, { borderColor: a.color }, sel && { backgroundColor: a.color + '22' }]} onPress={() => setInstEdit((e) => ({ ...e, name: a.name, icon: a.icon, color: a.color, activityId: a.id }))}>
-                        <Ionicons name={a.icon} size={14} color={a.color} /><Text style={styles.gapChipText}>{a.name}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <Text style={[styles.gapSub, { marginTop: 12 }]}>Nombre</Text>
-                <TextInput style={styles.gapInput} value={instEdit.name} onChangeText={(v) => setInstEdit((e) => ({ ...e, name: v }))} placeholderTextColor={COLORS.textMuted} />
+                {instEdit.kind !== 'sleepOverride' && (
+                  <>
+                    <Text style={styles.gapSub}>Cambiar actividad:</Text>
+                    <View style={styles.gapChips}>
+                      {activities.map((a) => {
+                        const sel = instEdit.name === a.name;
+                        return (
+                          <TouchableOpacity key={a.id} style={[styles.gapChip, { borderColor: a.color }, sel && { backgroundColor: a.color + '22' }]} onPress={() => setInstEdit((e) => ({ ...e, name: a.name, icon: a.icon, color: a.color, activityId: a.id }))}>
+                            <Ionicons name={a.icon} size={14} color={a.color} /><Text style={styles.gapChipText}>{a.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                    <Text style={[styles.gapSub, { marginTop: 12 }]}>Nombre</Text>
+                    <TextInput style={styles.gapInput} value={instEdit.name} onChangeText={(v) => setInstEdit((e) => ({ ...e, name: v }))} placeholderTextColor={COLORS.textMuted} />
+                  </>
+                )}
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                  <View style={{ flex: 1 }}><Text style={styles.gapSub}>Inicio</Text><TimePickerField value={instEdit.start} onChange={(v) => setInstEdit((e) => ({ ...e, start: v }))} compact /></View>
-                  <View style={{ flex: 1 }}><Text style={styles.gapSub}>Fin</Text><TimePickerField value={instEdit.end} onChange={(v) => setInstEdit((e) => ({ ...e, end: v }))} compact /></View>
+                  <View style={{ flex: 1 }}><Text style={styles.gapSub}>{instEdit.kind === 'sleepOverride' ? 'Hora de dormir' : 'Inicio'}</Text><TimePickerField value={instEdit.start} onChange={(v) => setInstEdit((e) => ({ ...e, start: v }))} compact /></View>
+                  <View style={{ flex: 1 }}><Text style={styles.gapSub}>{instEdit.kind === 'sleepOverride' ? 'Despertar' : 'Fin'}</Text><TimePickerField value={instEdit.end} onChange={(v) => setInstEdit((e) => ({ ...e, end: v }))} compact /></View>
                 </View>
+                {instEdit.kind === 'sleepOverride' && (
+                  <Text style={[styles.legendInline, { marginTop: 10 }]}>Solo aplica a hoy. El plan base no cambia.</Text>
+                )}
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-                  <TouchableOpacity style={styles.instDel} onPress={deleteInst}><Ionicons name="trash-outline" size={18} color={COLORS.red} /><Text style={styles.instDelText}>Eliminar</Text></TouchableOpacity>
+                  <TouchableOpacity style={styles.instDel} onPress={deleteInst}><Ionicons name="trash-outline" size={18} color={COLORS.red} /><Text style={styles.instDelText}>{instEdit.kind === 'sleepOverride' ? 'Restablecer' : 'Eliminar'}</Text></TouchableOpacity>
                   <TouchableOpacity style={styles.instSave} onPress={saveInstEdit}><Text style={styles.instSaveText}>Guardar</Text></TouchableOpacity>
                 </View>
               </>
@@ -483,6 +554,8 @@ export default function PlanningScreen({ navigation }) {
         <Text style={styles.sectionTitle}>📈 Tu avance (últimos 7 días)</Text>
         {series.length === 0 ? (
           <Text style={styles.hint}>Activa actividades en "Editar plan" y empieza a cumplirlas para ver tu avance.</Text>
+        ) : series.every(s => s.data.every(v => v === 0)) ? (
+          <Text style={styles.hint}>Aún no hay registros en los últimos 7 días. Completa actividades para ver tu avance.</Text>
         ) : (
           <View style={styles.card}><LineChart series={series} labels={days7.map((d) => d.short)} /></View>
         )}
@@ -536,18 +609,22 @@ export default function PlanningScreen({ navigation }) {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { paddingBottom: 20 },
-  hero: { padding: 24, paddingTop: 56, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  hero: { padding: 24, paddingTop: 56, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4 },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 },
   heroTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text },
   heroSub: { fontSize: 13, color: COLORS.purpleLight, marginTop: 4 },
   heroHoles: { fontSize: 12, color: COLORS.red, marginTop: 4, fontWeight: '600' },
   editBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.purpleDim + 'aa', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   editText: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '600' },
-  daySelector: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 16 },
-  dayBtn: { flex: 1, marginHorizontal: 3, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.card, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  daySelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 12, paddingTop: 16 },
+  weekNavBtn: { width: 26, height: 48, alignItems: 'center', justifyContent: 'center' },
+  dayBtn: { flex: 1, marginHorizontal: 2, height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.card, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  dayBtnToday: { borderColor: COLORS.purple, borderWidth: 1.5 },
   dayBtnOn: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
-  dayBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.textSub },
+  dayBtnText: { fontSize: 11, fontWeight: '700', color: COLORS.textSub },
   dayBtnTextOn: { color: '#fff' },
+  dayBtnNum: { fontSize: 10, fontWeight: '600', color: COLORS.textMuted, marginTop: 1 },
+  dayBtnNumOn: { color: '#ffffffcc' },
   nowCard: { margin: 16, marginBottom: 0, backgroundColor: COLORS.bg3, borderRadius: 18, padding: 18, borderWidth: 1.5, borderColor: COLORS.purpleLight, overflow: 'hidden' },
   nowGlow: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.purple + '22' },
   nowLabel: { fontSize: 12, fontWeight: '800', color: COLORS.purpleLight, letterSpacing: 1 },
@@ -605,4 +682,10 @@ const styles = StyleSheet.create({
   calBtnText: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '700' },
   calLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 4, paddingVertical: 12 },
   calLinkText: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '600' },
+  nowLine: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  nowLineDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: COLORS.purpleLight },
+  nowLineText: { fontSize: 11, fontWeight: '800', color: COLORS.purpleLight, letterSpacing: 0.5 },
+  nowLineBar: { flex: 1, height: 1.5, backgroundColor: COLORS.purpleLight + '66' },
+  overlapWarn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: COLORS.amber + '22', borderRadius: 8, padding: 8, marginTop: 8 },
+  overlapWarnText: { flex: 1, fontSize: 11, color: COLORS.amber, fontWeight: '600' },
 });

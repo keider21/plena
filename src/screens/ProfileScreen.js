@@ -1,10 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, TextInput } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
-import { COLORS } from '../utils/theme';
+import { COLORS, NEOM } from '../utils/theme';
 import { CURRENCY_LIST } from '../utils/currency';
 import { goalProgress } from '../utils/goals';
 import { exportTransactionsCSV } from '../utils/exportCSV';
@@ -45,10 +44,11 @@ export default function ProfileScreen({ navigation }) {
   };
 
   const MENU = [
-    { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.purple, onPress: () => navigation.navigate('Permisos') },
-    { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.blue, onPress: handleExport },
-    { icon: 'barbell-outline', label: 'Editar mis hábitos', color: COLORS.green, onPress: () => navigation.navigate('Habitos') },
-    { icon: 'star-outline', label: 'Editar mis metas', color: COLORS.amber, onPress: () => navigation.navigate('Metas') },
+    { icon: 'settings-outline', label: 'Categorías y subcategorías', color: COLORS.purple, onPress: () => navigation.navigate('Settings') },
+    { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.blue, onPress: () => navigation.navigate('Permisos') },
+    { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
+    { icon: 'barbell-outline', label: 'Editar mis hábitos', color: COLORS.amber, onPress: () => navigation.navigate('Habitos') },
+    { icon: 'star-outline', label: 'Editar mis metas', color: '#EC4899', onPress: () => navigation.navigate('Metas') },
     { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan 100% localmente en tu teléfono. No se envía nada a servidores.') },
     { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
     { icon: 'terminal-outline', label: 'Ver logs de la app', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
@@ -57,11 +57,11 @@ export default function ProfileScreen({ navigation }) {
   return (
     <ScrollView style={styles.bg} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-      <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.header}>
+      <View style={styles.header}>
         <View style={styles.avatarArea}>
-          <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.avatar}>
+          <View style={styles.avatar}>
             <Text style={styles.avatarText}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
-          </LinearGradient>
+          </View>
           <Text style={styles.userName}>{currentUser?.name}</Text>
           <Text style={styles.userEmail}>{currentUser?.email}</Text>
           <View style={styles.memberBadge}>
@@ -69,42 +69,40 @@ export default function ProfileScreen({ navigation }) {
             <Text style={styles.memberText}>Miembro desde {currentUser?.createdAt || 'hoy'}</Text>
           </View>
         </View>
-      </LinearGradient>
+      </View>
 
       <View style={styles.levelCard}>
-        <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.levelGrad}>
-          <View style={styles.levelTop}>
-            <View style={[styles.levelIconWrap, { backgroundColor: lvl.color + '22' }]}>
-              <Ionicons name={lvl.icon} size={28} color={lvl.color} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.levelName}>{lvl.name}</Text>
-              <Text style={styles.levelPts}>{points.total} pts</Text>
-            </View>
+        <View style={styles.levelTop}>
+          <View style={[styles.levelIconWrap, { backgroundColor: lvl.color + '22' }]}>
+            <Ionicons name={lvl.icon} size={28} color={lvl.color} />
           </View>
-          <View style={styles.levelBarBg}>
-            <View style={[styles.levelBarFill, { width: prog.pct + '%', backgroundColor: lvl.color }]} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.levelName}>{lvl.name}</Text>
+            <Text style={styles.levelPts}>{points.total} pts</Text>
           </View>
-          <Text style={styles.levelHint}>
-            {prog.next
-              ? `Faltan ${prog.remaining} pts para ${prog.next.name}`
-              : '¡Nivel máximo! 🪶'}
-          </Text>
-          <View style={styles.levelRow}>
-            <View style={styles.levelChip}>
-              <Ionicons name="flame-outline" size={14} color={COLORS.amber} />
-              <Text style={styles.levelChipTxt}>Hábitos {br.habits.points >= 0 ? '+' : ''}{br.habits.points}</Text>
-            </View>
-            <View style={styles.levelChip}>
-              <Ionicons name="wallet-outline" size={14} color={COLORS.purpleLight} />
-              <Text style={styles.levelChipTxt}>Finanzas +{br.transactions.points + br.transactions.paymentPts}</Text>
-            </View>
-            <View style={styles.levelChip}>
-              <Ionicons name="calendar-outline" size={14} color={COLORS.green} />
-              <Text style={styles.levelChipTxt}>Plan {br.plan.points >= 0 ? '+' : ''}{br.plan.points}</Text>
-            </View>
+        </View>
+        <View style={styles.levelBarBg}>
+          <View style={[styles.levelBarFill, { width: prog.pct + '%', backgroundColor: lvl.color }]} />
+        </View>
+        <Text style={styles.levelHint}>
+          {prog.next
+            ? `Faltan ${prog.remaining} pts para ${prog.next.name}`
+            : '¡Nivel máximo! 🪶'}
+        </Text>
+        <View style={styles.levelRow}>
+          <View style={styles.levelChip}>
+            <Ionicons name="flame-outline" size={14} color={COLORS.amber} />
+            <Text style={styles.levelChipTxt}>Hábitos {br.habits.points >= 0 ? '+' : ''}{br.habits.points}</Text>
           </View>
-        </LinearGradient>
+          <View style={styles.levelChip}>
+            <Ionicons name="wallet-outline" size={14} color={COLORS.purple} />
+            <Text style={styles.levelChipTxt}>Finanzas +{br.transactions.points + br.transactions.paymentPts}</Text>
+          </View>
+          <View style={styles.levelChip}>
+            <Ionicons name="calendar-outline" size={14} color={COLORS.green} />
+            <Text style={styles.levelChipTxt}>Plan {br.plan.points >= 0 ? '+' : ''}{br.plan.points}</Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.statsGrid}>
@@ -239,62 +237,80 @@ export default function ProfileScreen({ navigation }) {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
   container: {},
-  header: { padding: 20, paddingTop: 56, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginBottom: 8 },
+  // ── Header ──────────────────────────────────────────────────────────────────
+  header: {
+    padding: 20, paddingTop: 56, paddingBottom: 24,
+    backgroundColor: COLORS.bg,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4,
+  },
   avatarArea: { alignItems: 'center', gap: 8 },
-  avatar: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 4 },
+  avatar: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.purple, marginBottom: 4, ...NEOM.float },
   avatarText: { fontSize: 32, fontWeight: '800', color: '#fff' },
   userName: { fontSize: 20, fontWeight: '700', color: COLORS.text },
   userEmail: { fontSize: 13, color: COLORS.textSub },
   memberBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.amberDim, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 4 },
   memberText: { fontSize: 11, color: COLORS.amber, fontWeight: '600' },
-  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16, paddingTop: 16 },
-  statCard: { width: '47%', backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder, alignItems: 'center', gap: 6 },
-  statIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  statVal: { fontSize: 20, fontWeight: '800' },
-  statLbl: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center' },
-  section: { paddingHorizontal: 16, paddingTop: 20 },
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: COLORS.text, marginBottom: 12 },
-  currencyRow: { flexDirection: 'row', gap: 10 },
-  currencyBtn: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card,
-    borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder,
-  },
-  currencyBtnOn: { borderColor: COLORS.purple, backgroundColor: COLORS.purpleDim + '55' },
-  currencySym: { fontSize: 18, fontWeight: '800', color: COLORS.textSub },
-  currencySymOn: { color: COLORS.purpleLight },
-  currencyName: { flex: 1, fontSize: 13, color: COLORS.textSub },
-  currencyNameOn: { color: COLORS.text, fontWeight: '600' },
-  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 0.5, borderColor: COLORS.border },
-  menuIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { flex: 1, fontSize: 14, color: COLORS.text },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, backgroundColor: COLORS.redDim, borderRadius: 14, borderWidth: 0.5, borderColor: COLORS.red + '44' },
-  logoutText: { fontSize: 15, color: COLORS.red, fontWeight: '600' },
-  appInfo: { alignItems: 'center', paddingTop: 24, gap: 4 },
-  appInfoText: { fontSize: 12, color: COLORS.textMuted },
-  versionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12 },
-  versionBadge: { backgroundColor: COLORS.purpleDim, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
-  versionBadgeText: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '800' },
-  versionSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 1 },
-  clBackdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  clSheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
-  clHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  clTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
-  clVersion: { marginBottom: 18 },
-  clVer: { fontSize: 15, fontWeight: '700', color: COLORS.purpleLight, marginBottom: 8 },
-  clDate: { fontSize: 12, color: COLORS.textMuted, fontWeight: '400' },
-  clItem: { flexDirection: 'row', gap: 8, paddingVertical: 3 },
-  clBullet: { color: COLORS.green, fontSize: 14 },
-  clText: { flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 19 },
-  levelCard: { marginHorizontal: 16, marginTop: 16, borderRadius: 18, overflow: 'hidden', borderWidth: 0.5, borderColor: COLORS.cardBorder },
-  levelGrad: { padding: 18, gap: 12 },
+
+  // ── Tarjeta de nivel ─────────────────────────────────────────────────────────
+  levelCard: { marginHorizontal: 16, marginTop: 16, padding: 18, gap: 12, ...NEOM.float },
   levelTop: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   levelIconWrap: { width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center' },
   levelName: { fontSize: 22, fontWeight: '800', color: COLORS.text },
   levelPts: { fontSize: 14, color: COLORS.textSub, marginTop: 2 },
-  levelBarBg: { height: 8, backgroundColor: COLORS.card, borderRadius: 4, overflow: 'hidden' },
+  levelBarBg: { height: 8, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden' },
   levelBarFill: { height: 8, borderRadius: 4 },
   levelHint: { fontSize: 12, color: COLORS.textMuted },
   levelRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 },
-  levelChip: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: COLORS.card, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 10 },
+  levelChip: { flexDirection: 'row', alignItems: 'center', gap: 4, ...NEOM.chip, paddingHorizontal: 10, paddingVertical: 5 },
   levelChipTxt: { fontSize: 11, color: COLORS.textSub, fontWeight: '600' },
+
+  // ── Grid de estadísticas ─────────────────────────────────────────────────────
+  statsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingHorizontal: 16, paddingTop: 16 },
+  statCard: { width: '47%', ...NEOM.card, padding: 14, alignItems: 'center', gap: 6 },
+  statIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  statVal: { fontSize: 20, fontWeight: '800' },
+  statLbl: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center' },
+
+  // ── Secciones ────────────────────────────────────────────────────────────────
+  section: { paddingHorizontal: 16, paddingTop: 20 },
+  sectionTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text, marginBottom: 12 },
+  versionNote: { fontSize: 12, color: COLORS.textMuted, marginTop: 6 },
+
+  // ── Moneda y apariencia ──────────────────────────────────────────────────────
+  currencyRow: { flexDirection: 'row', gap: 10 },
+  currencyBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, ...NEOM.card, padding: 14 },
+  currencyBtnOn: { backgroundColor: COLORS.purpleDim },
+  currencySym: { fontSize: 18, fontWeight: '800', color: COLORS.textSub },
+  currencySymOn: { color: COLORS.purple },
+  currencyName: { flex: 1, fontSize: 13, color: COLORS.textSub },
+  currencyNameOn: { color: COLORS.text, fontWeight: '600' },
+  currencyPill: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, padding: 12, ...NEOM.chip },
+  currencyPillOn: { backgroundColor: COLORS.purpleDim },
+  currencyTxt: { fontSize: 13, color: COLORS.textSub },
+  currencyTxtOn: { color: COLORS.purple, fontWeight: '700' },
+
+  // ── Menú de configuración ─────────────────────────────────────────────────────
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderColor: COLORS.border },
+  menuIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  menuLabel: { flex: 1, fontSize: 14, color: COLORS.text },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, backgroundColor: COLORS.redDim, borderRadius: 14 },
+  logoutText: { fontSize: 15, color: COLORS.red, fontWeight: '600' },
+
+  // ── Versión y changelog ───────────────────────────────────────────────────────
+  versionRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 12 },
+  versionBadge: { backgroundColor: COLORS.purpleDim, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 },
+  versionBadgeText: { color: COLORS.purple, fontSize: 14, fontWeight: '800' },
+  versionSub: { fontSize: 12, color: COLORS.textMuted, marginTop: 1 },
+  appInfo: { alignItems: 'center', paddingTop: 24, gap: 4 },
+  appInfoText: { fontSize: 12, color: COLORS.textMuted },
+  clBackdrop: { flex: 1, backgroundColor: '#00000077', justifyContent: 'flex-end' },
+  clSheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 32 },
+  clHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  clTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text },
+  clVersion: { marginBottom: 18 },
+  clVer: { fontSize: 15, fontWeight: '700', color: COLORS.purple, marginBottom: 8 },
+  clDate: { fontSize: 12, color: COLORS.textMuted, fontWeight: '400' },
+  clItem: { flexDirection: 'row', gap: 8, paddingVertical: 3 },
+  clBullet: { color: COLORS.green, fontSize: 14 },
+  clText: { flex: 1, fontSize: 13, color: COLORS.text, lineHeight: 19 },
 });

@@ -398,7 +398,7 @@ const styles = StyleSheet.create({
   dayToday: { backgroundColor: COLORS.purple },
   dayNum: { fontSize: 14, color: COLORS.text, fontWeight: '500' },
   dayNumToday: { color: '#fff', fontWeight: '700' },
-  dayDim: { color: COLORS.textMuted, opacity: 0.5 },
+  dayDim: { color: COLORS.textMuted },
   eventDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: COLORS.purpleLight },
 
   weekDayCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder },
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
     flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.bg3,
     borderRadius: 10, padding: 10, marginVertical: 3, borderLeftWidth: 3,
   },
-  tlRoutine: { opacity: 0.55, backgroundColor: COLORS.bg2 },
+  tlRoutine: { opacity: 0.72, backgroundColor: COLORS.bg2 },
   tlLabel: { flex: 1, fontSize: 13, color: COLORS.text, fontWeight: '500' },
   tlTag: { fontSize: 10, color: COLORS.textMuted, fontStyle: 'italic' },
 

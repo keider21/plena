@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
@@ -29,10 +28,10 @@ export default function MetasScreen({ navigation }) {
   return (
     <View style={styles.bg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
+        <View style={styles.hero}>
           <Text style={styles.heroTitle}>Mis metas</Text>
           <Text style={styles.heroSub}>{goals.length === 0 ? 'Define lo que quieres lograr.' : `${goals.length} meta${goals.length > 1 ? 's' : ''}`}</Text>
-        </LinearGradient>
+        </View>
 
         {goals.length === 0 ? (
           <EmptyState icon="star-outline" title="Aún no tienes metas" subtitle="Crea una meta con su nombre, tipo y fecha. Las monetarias miden tu avance por monto." actionLabel="Crear meta" onAction={() => setModal(true)} />
@@ -116,7 +115,7 @@ export default function MetasScreen({ navigation }) {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { paddingBottom: 10 },
-  hero: { padding: 24, paddingTop: 56, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  hero: { padding: 24, paddingTop: 56, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4 },
   heroTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text },
   heroSub: { fontSize: 13, color: COLORS.purpleLight, marginTop: 4 },
   filterRow: { marginTop: 16 },

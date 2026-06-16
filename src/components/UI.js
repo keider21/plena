@@ -1,8 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, FONTS } from '../utils/theme';
+import { COLORS, NEOM, FONTS } from '../utils/theme';
 
 export function Card({ children, style, glow }) {
   return (
@@ -12,32 +11,32 @@ export function Card({ children, style, glow }) {
   );
 }
 
+// Mantenido por compatibilidad — ahora usa sombra neumorfismo en lugar de gradiente
 export function GradientCard({ children, colors, style }) {
   return (
-    <LinearGradient colors={colors || ['#1A1A2E', '#16213E']} style={[styles.card, style]}>
+    <View style={[styles.card, style]}>
       {children}
-    </LinearGradient>
+    </View>
   );
 }
 
 export function Button({ title, onPress, variant = 'primary', icon, loading, style, textStyle }) {
   const isPrimary = variant === 'primary';
   const isDanger = variant === 'danger';
+  const bg = isPrimary ? COLORS.purple : isDanger ? COLORS.red : COLORS.bg3;
+  const textCol = isPrimary || isDanger ? '#fff' : COLORS.purple;
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={style}>
-      <LinearGradient
-        colors={isPrimary ? ['#7C3AED', '#6D28D9'] : isDanger ? ['#EF4444', '#DC2626'] : ['#1A1A26', '#1A1A26']}
-        style={[styles.btn, !isPrimary && !isDanger && styles.btnOutline]}
-      >
+    <TouchableOpacity onPress={onPress} activeOpacity={0.8} style={style}>
+      <View style={[styles.btn, { backgroundColor: bg }, !isPrimary && !isDanger && styles.btnOutline]}>
         {loading ? (
-          <ActivityIndicator color="#fff" size="small" />
+          <ActivityIndicator color={textCol} size="small" />
         ) : (
           <>
-            {icon && <Ionicons name={icon} size={18} color={isPrimary ? '#fff' : COLORS.purpleLight} style={{ marginRight: 8 }} />}
-            <Text style={[styles.btnText, !isPrimary && !isDanger && styles.btnTextOutline, textStyle]}>{title}</Text>
+            {icon && <Ionicons name={icon} size={18} color={textCol} style={{ marginRight: 8 }} />}
+            <Text style={[styles.btnText, { color: textCol }, textStyle]}>{title}</Text>
           </>
         )}
-      </LinearGradient>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -123,20 +122,16 @@ export function Divider() {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
+    ...NEOM.card,
     padding: 16,
-    borderWidth: 0.5,
-    borderColor: COLORS.cardBorder,
     marginBottom: 12,
   },
   cardGlow: {
-    borderColor: COLORS.purple + '44',
     shadowColor: COLORS.purple,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 10,
   },
   btn: {
     flexDirection: 'row',
@@ -147,11 +142,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   btnOutline: {
-    borderWidth: 0.5,
+    borderWidth: 1.5,
     borderColor: COLORS.purple,
   },
-  btnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  btnTextOutline: { color: COLORS.purpleLight },
+  btnText: { fontSize: 15, fontWeight: '600' },
   badge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -160,11 +154,9 @@ const styles = StyleSheet.create({
   },
   badgeText: { fontSize: 11, fontWeight: '600' },
   statCard: {
-    backgroundColor: COLORS.card,
+    ...NEOM.card,
     borderRadius: 12,
     padding: 12,
-    borderWidth: 0.5,
-    borderColor: COLORS.cardBorder,
     flex: 1,
   },
   statRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

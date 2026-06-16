@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import { useStore } from '../store/useStore';
@@ -80,10 +79,10 @@ export default function AreasScreen({ navigation }) {
   return (
     <View style={styles.bg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
-        <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
+        <View style={styles.hero}>
           <Text style={styles.heroTitle}>Áreas de mi vida</Text>
           <Text style={styles.heroSub}>Organiza y desglosa todo: empresa, familia, aprendizaje...</Text>
-        </LinearGradient>
+        </View>
 
         {areas.length === 0 ? (
           <EmptyState
@@ -189,7 +188,7 @@ export default function AreasScreen({ navigation }) {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { paddingBottom: 10 },
-  hero: { padding: 24, paddingTop: 56, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
+  hero: { padding: 24, paddingTop: 56, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4 },
   heroTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text },
   heroSub: { fontSize: 13, color: COLORS.purpleLight, marginTop: 4 },
   tree: { padding: 12 },

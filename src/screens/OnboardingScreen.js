@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput, Alert } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
-import { COLORS } from '../utils/theme';
+import { COLORS, NEOM } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
 import { ACCOUNT_TYPES, accountType, CARD_KINDS, LOAN_TYPES, loanType, DEBT_PRIORITIES, OCCUPATIONS } from '../utils/finance';
 
@@ -85,7 +84,7 @@ export default function OnboardingScreen() {
   const progress = ((step + 1) / TOTAL) * 100;
 
   return (
-    <LinearGradient colors={['#0A0A0F', '#0D0D1A', '#12102A']} style={styles.bg}>
+    <View style={styles.bg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <Text style={styles.greeting}>Hola, {currentUser?.name?.split(' ')[0] || ''} 👋</Text>
@@ -243,11 +242,9 @@ export default function OnboardingScreen() {
               <Ionicons name="arrow-back" size={20} color={COLORS.textSub} /><Text style={styles.backText}>Atrás</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={goNext} activeOpacity={0.85} style={[styles.nextBtnWrap, saving && { opacity: 0.5 }]} disabled={saving}>
-            <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.nextBtn}>
-              <Text style={styles.nextBtnText}>{step === 0 ? 'Empezar' : step < TOTAL - 1 ? 'Siguiente' : (saving ? 'Guardando...' : 'Finalizar')}</Text>
-              <Ionicons name={step < TOTAL - 1 ? 'arrow-forward' : 'checkmark-circle'} size={18} color="#fff" style={{ marginLeft: 8 }} />
-            </LinearGradient>
+          <TouchableOpacity onPress={goNext} activeOpacity={0.85} style={[styles.nextBtn, saving && { opacity: 0.5 }]} disabled={saving}>
+            <Text style={styles.nextBtnText}>{step === 0 ? 'Empezar' : step < TOTAL - 1 ? 'Siguiente' : (saving ? 'Guardando...' : 'Finalizar')}</Text>
+            <Ionicons name={step < TOTAL - 1 ? 'arrow-forward' : 'checkmark-circle'} size={18} color="#fff" style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         </View>
 
@@ -257,7 +254,7 @@ export default function OnboardingScreen() {
 
         <View style={{ height: 30 }} />
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
@@ -270,7 +267,7 @@ const ItemRow = ({ icon, color, title, sub, onDel }) => (
 );
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
+  bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { padding: 24, paddingTop: 56, paddingBottom: 40 },
   header: { marginBottom: 24 },
   greeting: { fontSize: 15, color: COLORS.textSub, marginBottom: 8 },
@@ -295,8 +292,7 @@ const styles = StyleSheet.create({
   navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 18 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 14 },
   backText: { color: COLORS.textSub, fontSize: 14 },
-  nextBtnWrap: { flex: 1 },
-  nextBtn: { borderRadius: 14, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  nextBtn: { flex: 1, backgroundColor: COLORS.purple, borderRadius: 14, paddingVertical: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.purple, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   nextBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   skip: { alignItems: 'center', paddingVertical: 12 },
   skipText: { color: COLORS.textMuted, fontSize: 13 },

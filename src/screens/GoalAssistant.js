@@ -1,9 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, TextInput } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
-import { COLORS } from '../utils/theme';
+import { COLORS, NEOM } from '../utils/theme';
 import { buildQuestions, applyAnswers, newGoal } from '../utils/goals';
 
 export default function GoalAssistant({ navigation, route }) {
@@ -29,7 +28,7 @@ export default function GoalAssistant({ navigation, route }) {
   const next = () => { if (isLast) finish(); else setStep(step + 1); };
 
   return (
-    <LinearGradient colors={['#0A0A0F', '#0D0D1A', '#12102A']} style={styles.bg}>
+    <View style={styles.bg}>
       <View style={styles.topBar}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.iconBtn}>
           <Ionicons name="close" size={24} color={COLORS.textSub} />
@@ -71,21 +70,19 @@ export default function GoalAssistant({ navigation, route }) {
               <Text style={styles.skipText}>Omitir</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity onPress={next} activeOpacity={0.85} style={styles.nextBtnWrap}>
-            <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.nextBtn}>
-              <Text style={styles.nextBtnText}>{isLast ? 'Crear meta' : 'Siguiente'}</Text>
-              <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={18} color="#fff" style={{ marginLeft: 8 }} />
-            </LinearGradient>
+          <TouchableOpacity onPress={next} activeOpacity={0.85} style={styles.nextBtn}>
+            <Text style={styles.nextBtnText}>{isLast ? 'Crear meta' : 'Siguiente'}</Text>
+            <Ionicons name={isLast ? 'checkmark' : 'arrow-forward'} size={18} color="#fff" style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         </View>
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
-  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 52, paddingBottom: 10 },
+  bg: { flex: 1, backgroundColor: COLORS.bg },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingTop: 52, paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   iconBtn: { padding: 4 },
   topTitle: { flex: 1, textAlign: 'center', fontSize: 15, fontWeight: '700', color: COLORS.text },
   container: { padding: 24 },
@@ -94,10 +91,7 @@ const styles = StyleSheet.create({
   progressBg: { height: 4, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden', marginBottom: 28 },
   progressFill: { height: 4, backgroundColor: COLORS.purple, borderRadius: 4 },
   question: { fontSize: 22, fontWeight: '700', color: COLORS.text, lineHeight: 30, marginBottom: 20 },
-  input: {
-    backgroundColor: COLORS.card, borderRadius: 14, padding: 16, color: COLORS.text, fontSize: 16,
-    borderWidth: 0.5, borderColor: COLORS.cardBorder,
-  },
+  input: { ...NEOM.pressed, padding: 16, color: COLORS.text, fontSize: 16 },
   inputMulti: { minHeight: 120, textAlignVertical: 'top' },
   tip: { fontSize: 12, color: COLORS.textMuted, marginTop: 8 },
   navRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 32 },
@@ -105,7 +99,6 @@ const styles = StyleSheet.create({
   backText: { color: COLORS.textSub, fontSize: 14 },
   skipBtn: { paddingVertical: 12, paddingHorizontal: 12 },
   skipText: { color: COLORS.textSub, fontSize: 14, fontWeight: '600' },
-  nextBtnWrap: {},
-  nextBtn: { borderRadius: 14, paddingVertical: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  nextBtn: { backgroundColor: COLORS.purple, borderRadius: 14, paddingVertical: 14, paddingHorizontal: 22, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.purple, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   nextBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

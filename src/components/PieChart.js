@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import Svg, { G, Path, Circle } from 'react-native-svg';
+import { COLORS } from '../utils/theme';
 
 // Gráfico de torta simple con SVG.
 // data: [{ key, value, color, label }], size: px
@@ -9,7 +10,7 @@ export default function PieChart({ data, size = 180, thickness = 28, centerLabel
   if (total <= 0) {
     return (
       <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: '#999', fontSize: 13 }}>Sin datos</Text>
+        <Text style={{ color: COLORS.textSub, fontSize: 13 }}>Sin datos</Text>
       </View>
     );
   }
@@ -66,8 +67,8 @@ export default function PieChart({ data, size = 180, thickness = 28, centerLabel
       </Svg>
       {(centerLabel || centerValue) && (
         <View style={{ position: 'absolute', alignItems: 'center' }}>
-          {centerLabel && <Text style={{ color: '#999', fontSize: 11 }}>{centerLabel}</Text>}
-          {centerValue && <Text style={{ color: '#fff', fontSize: 18, fontWeight: '800' }}>{centerValue}</Text>}
+          {centerLabel && <Text style={{ color: COLORS.textSub, fontSize: 11 }}>{centerLabel}</Text>}
+          {centerValue && <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '800' }}>{centerValue}</Text>}
         </View>
       )}
     </View>

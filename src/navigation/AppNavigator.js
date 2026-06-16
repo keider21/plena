@@ -4,6 +4,8 @@ import { createStackNavigator } from '@react-navigation/stack';
 import { View, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../utils/theme';
+import { useStore } from '../store/useStore';
+import NotificationOverlay from '../components/NotificationOverlay';
 
 import DashboardScreen from '../screens/DashboardScreen';
 import PlanningScreen from '../screens/PlanningScreen';
@@ -22,6 +24,7 @@ import MentalidadScreen from '../screens/MentalidadScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import PermisosScreen from '../screens/PermisosScreen';
 import DevLogsScreen from '../screens/DevLogsScreen';
+import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createStackNavigator();
@@ -37,7 +40,13 @@ const TAB_ITEMS = [
   { name: 'Perfil', component: ProfileScreen, icon: 'person-circle-outline', iconActive: 'person-circle' },
 ];
 
+const ALWAYS_VISIBLE = ['Inicio', 'Perfil'];
+
 function MainTabs() {
+  const { settings } = useStore();
+  const hidden = settings?.hiddenModules || [];
+  const visibleTabs = TAB_ITEMS.filter(t => ALWAYS_VISIBLE.includes(t.name) || !hidden.includes(t.name));
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -60,7 +69,7 @@ function MainTabs() {
         },
       })}
     >
-      {TAB_ITEMS.map(item => (
+      {visibleTabs.map(item => (
         <Tab.Screen key={item.name} name={item.name} component={item.component} />
       ))}
     </Tab.Navigator>
@@ -69,17 +78,21 @@ function MainTabs() {
 
 export default function AppNavigator() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="Main" component={MainTabs} />
-      <Stack.Screen name="Permisos" component={PermisosScreen} />
-      <Stack.Screen name="PlanningWizard" component={PlanningWizard} />
-      <Stack.Screen name="Calendar" component={CalendarScreen} />
-      <Stack.Screen name="GoalAssistant" component={GoalAssistant} />
-      <Stack.Screen name="GoalDetail" component={GoalDetail} />
-      <Stack.Screen name="CardCalendar" component={CardCalendar} />
-      <Stack.Screen name="HabitsOnboarding" component={HabitsOnboardingScreen} />
-      <Stack.Screen name="DevLogs" component={DevLogsScreen} />
-    </Stack.Navigator>
+    <>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Screen name="Permisos" component={PermisosScreen} />
+        <Stack.Screen name="PlanningWizard" component={PlanningWizard} />
+        <Stack.Screen name="Calendar" component={CalendarScreen} />
+        <Stack.Screen name="GoalAssistant" component={GoalAssistant} />
+        <Stack.Screen name="GoalDetail" component={GoalDetail} />
+        <Stack.Screen name="CardCalendar" component={CardCalendar} />
+        <Stack.Screen name="HabitsOnboarding" component={HabitsOnboardingScreen} />
+        <Stack.Screen name="DevLogs" component={DevLogsScreen} />
+        <Stack.Screen name="Settings" component={SettingsScreen} />
+      </Stack.Navigator>
+      <NotificationOverlay />
+    </>
   );
 }
 

@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Modal, Alert, Image } from 'react-native';
 let ImagePicker = null;
 try { ImagePicker = require('expo-image-picker'); } catch (e) { console.warn('[FinanzasScreen] expo-image-picker no disponible:', e.message); }
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   ACCOUNT_TYPES, accountType, LOAN_TYPES, loanType, DEBT_PRIORITIES, debtPriority,
-  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, loanPending, loanBreakdown, categoryColor, CARD_KINDS, incomeCategories, userCategories,
+  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, periodRange, loanPending, loanBreakdown, loanTotalCost, categoryColor, CARD_KINDS,
+  incomeCategoriesGrouped, userCategoriesGrouped, usageByCategory, sortGroupedByUsage,
 } from '../utils/finance';
 import { purchasePaymentInfo } from '../utils/cardCycle';
 import Dropdown from '../components/Dropdown';
@@ -22,12 +22,19 @@ import PieChart from '../components/PieChart';
 const fmtDate = (d) => format(d, "d 'de' MMM", { locale: es });
 
 const TABS = [
-  { key: 'resumen', label: 'Resumen' },
-  { key: 'gastos_fijos', label: 'Fijos' },
-  { key: 'cuentas', label: 'Cuentas' },
-  { key: 'tarjetas', label: 'Tarjetas' },
-  { key: 'prestamos', label: 'Préstamos' },
-  { key: 'deudas', label: 'Deudas' },
+  { key: 'resumen',      label: 'Resumen',      icon: 'bar-chart-outline',    color: '#7C5CE6' },
+  { key: 'gastos_fijos', label: 'Gastos Fijos',  icon: 'repeat-outline',       color: '#F5A623' },
+  { key: 'cuentas',      label: 'Cuentas',       icon: 'wallet-outline',       color: '#35C77B' },
+  { key: 'tarjetas',     label: 'Tarjetas',      icon: 'card-outline',         color: '#5B9BF5' },
+  { key: 'prestamos',    label: 'Préstamos',     icon: 'cash-outline',         color: '#E63959' },
+  { key: 'deudas',       label: 'Deudas',        icon: 'alert-circle-outline', color: '#F4607A' },
+  { key: 'cobrar',       label: 'Por cobrar',    icon: 'receipt-outline',      color: '#9B84F4' },
+];
+const FREQ_OPTS = [
+  { key: 'diario', label: 'Diario' },
+  { key: 'semanal', label: 'Semanal' },
+  { key: 'quincenal', label: 'Quincenal' },
+  { key: 'mensual', label: 'Mensual' },
 ];
 const CUR_OPTS = [{ key: 'PEN', label: 'S/' }, { key: 'USD', label: '$' }];
 const num = (v) => { const n = parseFloat(String(v ?? '').replace(',', '.')); return isNaN(n) ? 0 : n; };
@@ -56,14 +63,27 @@ function Field({ label, children }) {
 
 export default function FinanzasScreen({ navigation, route }) {
   const store = useStore();
-  const { finance, settings } = store;
-  const cur = settings.currency;
+  const { settings } = store;
+  const rawFinance = store.finance || {};
+  const finance = {
+    accounts:     rawFinance.accounts     || [],
+    cards:        rawFinance.cards        || [],
+    loans:        rawFinance.loans        || [],
+    debts:        rawFinance.debts        || [],
+    transactions: rawFinance.transactions || [],
+    gastosFijos:  rawFinance.gastosFijos  || [],
+    receivables:  rawFinance.receivables  || [],
+    payments:     rawFinance.payments     || [],
+  };
+  const cur = settings?.currency || 'PEN';
   const [tab, setTab] = useState('resumen');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [period, setPeriod] = useState('mes');
   const [modal, setModal] = useState(null); // { type, id? }
   const [f, setF] = useState({});
-  const [pay, setPay] = useState(null); // { mode:'debt'|'loan'|'loanAdd', item, amount, accountId }
-  const [historyFor, setHistoryFor] = useState(null); // { kind:'debt'|'loan'|'card', refId, label }
+  const [pay, setPay] = useState(null); // { mode:'debt'|'loan'|'loanAdd'|'receivable', item, amount, accountId }
+  const [historyFor, setHistoryFor] = useState(null); // { kind:'debt'|'loan'|'card'|'receivable', refId, label }
+  const [editPayment, setEditPayment] = useState(null); // { id, amount:string, date:string }
 
   const set = (k, v) => setF((p) => {
     const next = { ...p, [k]: v };
@@ -154,6 +174,8 @@ export default function FinanzasScreen({ navigation, route }) {
       res = await store.payDebt(pay.item.id, amt, pay.accountId);
     } else if (pay.mode === 'loan') {
       res = await store.payLoan(pay.item.id, amt, pay.accountId);
+    } else if (pay.mode === 'receivable') {
+      res = await store.collectReceivable(pay.item.id, amt, pay.accountId);
     } else {
       res = await store.addLoanAmount(pay.item.id, amt, pay.accountId);
     }
@@ -168,11 +190,12 @@ export default function FinanzasScreen({ navigation, route }) {
       return;
     }
     const defaults = {
-      account: { name: '', type: 'yape', currency: cur, balance: '' },
-      movement: { type: 'gasto', accountId: finance.accounts[0]?.id, toAccountId: finance.accounts[1]?.id, cardId: finance.cards.find((c) => c.kind !== 'debito')?.id, amount: '', category: 'Otros', note: '', time: format(new Date(), 'HH:mm'), receiptImage: null },
-      card: { kind: 'credito', bank: '', currency: cur, balance: '', limit: '', used: '', cycleStartDay: '', cutoffDay: '', payDay: '', minPayment: '', totalPayment: '', interest: '' },
-      loan: { name: '', lenderType: 'banco', currency: cur, installment: '', installmentsTotal: '', installmentsPaid: '', interest: '', startDate: '', endDate: '' },
+      account: { name: '', type: 'yape', currency: cur, balance: '', linkedTo: null },
+      movement: { type: 'gasto', accountId: finance.accounts[0]?.id, toAccountId: finance.accounts[1]?.id, cardId: finance.cards.find((c) => c.kind !== 'debito')?.id, amount: '', category: 'Otros', note: '', date: format(new Date(), 'yyyy-MM-dd'), time: format(new Date(), 'HH:mm'), receiptImage: null },
+      card: { kind: 'credito', bank: '', currency: cur, balance: '', limit: '', used: '', cycleStartDay: '', cutoffDay: '', payDay: '', minPayment: '', totalPayment: '', interest: '', linkedTo: null },
+      loan: { name: '', lenderType: 'banco', currency: cur, installment: '', installmentsTotal: '', installmentsPaid: '', interest: '', startDate: '', endDate: '', frequency: 'mensual' },
       debt: { name: '', creditor: '', currency: cur, amount: '', paid: '', priority: 'media', dueDate: '' },
+      receivable: { name: '', debtor: '', currency: cur, amount: '', paid: '', interest: '', dueDate: '', notes: '' },
       gastoFijo: { name: '', amount: '', currency: cur, category: 'Vivienda', period: 'mensual', dayOfMonth: '1', accountId: finance.accounts[0]?.id || null, note: '', active: true },
     };
     setF(item ? { ...item, balance: item.balance ?? '', amount: item.amount ?? '' } : defaults[type]);
@@ -197,14 +220,29 @@ export default function FinanzasScreen({ navigation, route }) {
   const save = async () => {
     const id = modal.id;
     if (modal.type === 'account') {
-      const p = { name: f.name?.trim() || accountType(f.type).label, type: f.type, currency: f.currency, balance: num(f.balance) };
+      const p = { name: f.name?.trim() || accountType(f.type).label, type: f.type, currency: f.currency, balance: num(f.balance), linkedTo: f.linkedTo || null };
       id ? await store.updateAccount(id, p) : await store.addAccount(p);
     } else if (modal.type === 'movement') {
       if (num(f.amount) <= 0) return;
       let res;
-      if (f.type === 'pago') {
+      if (id) {
+        // Editing existing transaction
+        const isCard = f.type === 'gasto' && finance.cards.some((c) => c.id === f.accountId);
+        res = await store.updateTransaction(id, {
+          type: f.type,
+          accountId: isCard ? undefined : f.accountId,
+          cardId: isCard ? f.accountId : (f.cardId || undefined),
+          toAccountId: f.type === 'transferencia' ? f.toAccountId : undefined,
+          amount: num(f.amount),
+          category: (f.type === 'ingreso' || f.type === 'gasto') ? f.category : null,
+          note: f.note?.trim() || '',
+          date: f.date || format(new Date(), 'yyyy-MM-dd'),
+          time: f.time || format(new Date(), 'HH:mm'),
+          receiptImage: f.receiptImage || null,
+        });
+      } else if (f.type === 'pago') {
         if (!f.accountId || !f.cardId) return;
-        res = await store.addTransaction({ type: 'pago', accountId: f.accountId, cardId: f.cardId, amount: num(f.amount), category: null, note: f.note?.trim() || '', time: f.time || format(new Date(), 'HH:mm') });
+        res = await store.addTransaction({ type: 'pago', accountId: f.accountId, cardId: f.cardId, amount: num(f.amount), category: null, note: f.note?.trim() || '', date: f.date || format(new Date(), 'yyyy-MM-dd'), time: f.time || format(new Date(), 'HH:mm') });
       } else {
         const isCard = f.type === 'gasto' && finance.cards.some((c) => c.id === f.accountId);
         res = await store.addTransaction({
@@ -215,17 +253,21 @@ export default function FinanzasScreen({ navigation, route }) {
           amount: num(f.amount),
           category: (f.type === 'ingreso' || f.type === 'gasto') ? f.category : null,
           note: f.note?.trim() || '',
+          date: f.date || format(new Date(), 'yyyy-MM-dd'),
           time: f.time || format(new Date(), 'HH:mm'),
           receiptImage: f.receiptImage || null,
         });
       }
       if (res && res.error) { Alert.alert('No se pudo registrar', res.error); return; }
     } else if (modal.type === 'card') {
-      const p = { kind: f.kind || 'credito', bank: f.bank?.trim() || 'Tarjeta', currency: f.currency, balance: num(f.balance), limit: num(f.limit), used: num(f.used), cycleStartDay: num(f.cycleStartDay), cutoffDay: num(f.cutoffDay), payDay: num(f.payDay), minPayment: num(f.minPayment), totalPayment: num(f.totalPayment), interest: num(f.interest) };
+      const p = { kind: f.kind || 'credito', bank: f.bank?.trim() || 'Tarjeta', currency: f.currency, balance: num(f.balance), limit: num(f.limit), used: num(f.used), cycleStartDay: num(f.cycleStartDay), cutoffDay: num(f.cutoffDay), payDay: num(f.payDay), minPayment: num(f.minPayment), totalPayment: num(f.totalPayment), interest: num(f.interest), linkedTo: f.linkedTo || null };
       id ? await store.updateCard(id, p) : await store.addCard(p);
     } else if (modal.type === 'loan') {
-      const p = { name: f.name?.trim() || 'Préstamo', lenderType: f.lenderType, currency: f.currency, installment: num(f.installment), installmentsTotal: num(f.installmentsTotal), installmentsPaid: num(f.installmentsPaid), interest: num(f.interest), startDate: f.startDate, endDate: f.endDate };
+      const p = { name: f.name?.trim() || 'Préstamo', lenderType: f.lenderType, currency: f.currency, installment: num(f.installment), installmentsTotal: num(f.installmentsTotal), installmentsPaid: num(f.installmentsPaid), interest: num(f.interest), startDate: f.startDate, endDate: f.endDate, frequency: f.frequency || 'mensual' };
       id ? await store.updateLoan(id, p) : await store.addLoan(p);
+    } else if (modal.type === 'receivable') {
+      const p = { name: f.name?.trim() || 'Cuenta por cobrar', debtor: f.debtor?.trim() || '', currency: f.currency, amount: num(f.amount), paid: num(f.paid), interest: num(f.interest), dueDate: f.dueDate, notes: f.notes?.trim() || '' };
+      id ? await store.updateReceivable(id, p) : await store.addReceivable(p);
     } else if (modal.type === 'debt') {
       const p = { name: f.name?.trim() || 'Deuda', creditor: f.creditor?.trim() || '', currency: f.currency, amount: num(f.amount), paid: num(f.paid), priority: f.priority, dueDate: f.dueDate };
       id ? await store.updateDebt(id, p) : await store.addDebt(p);
@@ -239,35 +281,42 @@ export default function FinanzasScreen({ navigation, route }) {
   const confirmDel = (label, fn) => Alert.alert('Eliminar', `¿Eliminar ${label}?`, [{ text: 'Cancelar' }, { text: 'Eliminar', style: 'destructive', onPress: fn }]);
 
   const onDeleteCurrent = () => {
-    const fns = { account: store.deleteAccount, card: store.deleteCard, loan: store.deleteLoan, debt: store.deleteDebt, gastoFijo: store.deleteGastoFijo };
+    const fns = { account: store.deleteAccount, card: store.deleteCard, loan: store.deleteLoan, debt: store.deleteDebt, gastoFijo: store.deleteGastoFijo, receivable: store.deleteReceivable, movement: store.deleteTransaction };
     const fn = fns[modal.type];
     if (!fn) return;
     confirmDel('este registro', async () => { await fn(modal.id); close(); });
   };
 
   const stats = financeStats(finance.transactions, period);
-  const fabType = { resumen: 'movement', gastos_fijos: 'gastoFijo', cuentas: 'account', tarjetas: 'card', prestamos: 'loan', deudas: 'debt' }[tab];
+  const fabType = { resumen: 'movement', gastos_fijos: 'gastoFijo', cuentas: 'account', tarjetas: 'card', prestamos: 'loan', deudas: 'debt', cobrar: 'receivable' }[tab];
+  const activeTab = TABS.find(t => t.key === tab) || TABS[0];
+  const gastoUsage = useMemo(() => usageByCategory(finance.transactions, 'gasto'), [finance.transactions]);
+  const ingresoUsage = useMemo(() => usageByCategory(finance.transactions, 'ingreso'), [finance.transactions]);
+  const gastoCats = useMemo(() => sortGroupedByUsage(userCategoriesGrouped(settings), gastoUsage), [settings, gastoUsage]);
+  const ingresoCats = useMemo(() => sortGroupedByUsage(incomeCategoriesGrouped(store.userProfile?.occupation, settings), ingresoUsage), [settings, ingresoUsage, store.userProfile?.occupation]);
 
   return (
     <View style={styles.bg}>
-      <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
+      <View style={styles.hero}>
         <Text style={styles.heroTitle}>Finanzas</Text>
         <Text style={styles.heroSub}>Patrimonio: {formatMoney(netWorth(finance), cur)}</Text>
-      </LinearGradient>
-
-      <View style={styles.tabsWrap}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
-          {TABS.map((t) => (
-            <TouchableOpacity key={t.key} onPress={() => setTab(t.key)} style={[styles.tab, tab === t.key && styles.tabOn]}>
-              <Text style={[styles.tabText, tab === t.key && styles.tabTextOn]}>{t.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
       </View>
+
+      <TouchableOpacity style={styles.navBar} onPress={() => setMenuOpen(true)} activeOpacity={0.85}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <View style={[styles.navIcon, { backgroundColor: activeTab.color + '22' }]}>
+            <Ionicons name={activeTab.icon} size={18} color={activeTab.color} />
+          </View>
+          <Text style={styles.navTitle}>{activeTab.label}</Text>
+        </View>
+        <View style={styles.navMenuBtn}>
+          <Ionicons name="grid-outline" size={20} color={COLORS.purple} />
+        </View>
+      </TouchableOpacity>
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {tab === 'resumen' && (
-          <Resumen finance={finance} cur={cur} period={period} setPeriod={setPeriod} stats={stats} onDelTx={(id) => store.deleteTransaction(id)} />
+          <Resumen finance={finance} cur={cur} period={period} setPeriod={setPeriod} stats={stats} onDelTx={(id) => store.deleteTransaction(id)} onEditTx={(t) => openModal('movement', t)} />
         )}
         {tab === 'gastos_fijos' && (
           <GastosFijos finance={finance} cur={cur} onEdit={(g) => openModal('gastoFijo', g)} onDel={(g) => confirmDel(`"${g.name}"`, () => store.deleteGastoFijo(g.id))} onAdd={() => openModal('gastoFijo')} settings={settings} />
@@ -284,6 +333,9 @@ export default function FinanzasScreen({ navigation, route }) {
         )}
         {tab === 'deudas' && (
           <Deudas finance={finance} onEdit={(d) => openModal('debt', d)} onDel={(d) => confirmDel(`la deuda "${d.name || d.creditor}"`, () => store.deleteDebt(d.id))} onAdd={() => openModal('debt')} onPay={(d) => openPay('debt', d)} onHistory={(d) => setHistoryFor({ kind: 'debt', refId: d.id, label: d.creditor || d.name, currency: d.currency })} />
+        )}
+        {tab === 'cobrar' && (
+          <CuentasCobrar finance={finance} onEdit={(r) => openModal('receivable', r)} onDel={(r) => confirmDel(`"${r.name || r.debtor}"`, () => store.deleteReceivable(r.id))} onAdd={() => openModal('receivable')} onCollect={(r) => openPay('receivable', r)} onHistory={(r) => setHistoryFor({ kind: 'receivable', refId: r.id, label: r.debtor || r.name, currency: r.currency })} />
         )}
         <View style={{ height: 90 }} />
       </ScrollView>
@@ -306,7 +358,19 @@ export default function FinanzasScreen({ navigation, route }) {
                   <Field label="Nombre"><TextInput style={styles.input} value={f.name} onChangeText={(v) => set('name', v)} placeholder="Ej. Mi BCP" placeholderTextColor={COLORS.textMuted} /></Field>
                   <Field label="Tipo de cuenta"><Chips options={ACCOUNT_TYPES} value={f.type} onChange={(v) => set('type', v)} /></Field>
                   <Field label="Moneda"><Chips options={CUR_OPTS} value={f.currency} onChange={(v) => set('currency', v)} /></Field>
-                  <Field label="Saldo actual"><TextInput style={styles.input} value={String(f.balance)} onChangeText={(v) => set('balance', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                  <Field label="Saldo inicial (lo que tienes ahora)"><TextInput style={styles.input} value={String(f.balance)} onChangeText={(v) => set('balance', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                  {finance.accounts.filter(a => a.id !== modal?.id).length > 0 && (
+                    <Field label="Vinculada a (opcional)">
+                      <View style={[styles.payNote, { borderColor: COLORS.blue + '66', padding: 8, marginBottom: 0 }]}>
+                        <Text style={{ fontSize: 11, color: COLORS.textSub, marginBottom: 8 }}>Si Yape usa el saldo de BCP, vincula Yape a BCP para no contar doble en el patrimonio.</Text>
+                        <Chips
+                          options={[{ key: null, label: 'Sin vincular' }, ...finance.accounts.filter(a => a.id !== modal?.id).map(a => ({ key: a.id, label: a.name }))]}
+                          value={f.linkedTo ?? null}
+                          onChange={(v) => set('linkedTo', v)}
+                        />
+                      </View>
+                    </Field>
+                  )}
                 </>
               )}
               {modal?.type === 'movement' && (
@@ -345,13 +409,18 @@ export default function FinanzasScreen({ navigation, route }) {
                   })()}
                   {(f.type === 'ingreso' || f.type === 'gasto') && (
                     <Field label="Categoría">
-                      <Dropdown options={(f.type === 'ingreso' ? incomeCategories(store.userProfile?.occupation) : userCategories(settings)).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
+                      <Dropdown options={f.type === 'ingreso' ? ingresoCats : gastoCats} value={f.category} onChange={(v) => set('category', v)} />
                     </Field>
                   )}
                   <Field label="Nota (opcional)"><TextInput style={styles.input} value={f.note} onChangeText={(v) => set('note', v)} placeholder="Detalle..." placeholderTextColor={COLORS.textMuted} /></Field>
-                  <Field label="Hora">
-                    <TextInput style={styles.input} value={f.time} onChangeText={(v) => set('time', v)} placeholder="HH:MM" placeholderTextColor={COLORS.textMuted} keyboardType="numbers-and-punctuation" />
-                  </Field>
+                  <Row>
+                    <Half label="Fecha">
+                      <TextInput style={styles.input} value={f.date} onChangeText={(v) => set('date', v)} placeholder="yyyy-mm-dd" placeholderTextColor={COLORS.textMuted} />
+                    </Half>
+                    <Half label="Hora">
+                      <TextInput style={styles.input} value={f.time} onChangeText={(v) => set('time', v)} placeholder="HH:MM" placeholderTextColor={COLORS.textMuted} keyboardType="numbers-and-punctuation" />
+                    </Half>
+                  </Row>
                   <Field label="Foto de boleta (opcional)">
                     <View style={{ flexDirection: 'row', gap: 10 }}>
                       <TouchableOpacity style={styles.photoBtn} onPress={() => pickImage('camera')}>
@@ -400,7 +469,29 @@ export default function FinanzasScreen({ navigation, route }) {
                     </>
                   )}
                   {f.kind === 'debito' && (
-                    <Field label="Saldo actual"><TextInput style={styles.input} value={String(f.balance)} onChangeText={(v) => set('balance', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                    <>
+                      {!f.linkedTo ? (
+                        <Field label="Saldo actual"><TextInput style={styles.input} value={String(f.balance)} onChangeText={(v) => set('balance', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                      ) : (
+                        <Field label="Saldo actual">
+                          <View style={[styles.payNote, { borderColor: COLORS.green + '66', padding: 10 }]}>
+                            <Text style={{ fontSize: 13, color: COLORS.textSub }}>Saldo automático desde <Text style={{ fontWeight: '700', color: COLORS.text }}>{finance.accounts.find(a => a.id === f.linkedTo)?.name || 'cuenta vinculada'}</Text>: <Text style={{ fontWeight: '700', color: COLORS.green }}>{formatMoney(finance.accounts.find(a => a.id === f.linkedTo)?.balance || 0, f.currency)}</Text></Text>
+                          </View>
+                        </Field>
+                      )}
+                      {finance.accounts.length > 0 && (
+                        <Field label="Vincular a cuenta (opcional)">
+                          <View style={[styles.payNote, { borderColor: COLORS.blue + '66', padding: 8, marginBottom: 0 }]}>
+                            <Text style={{ fontSize: 11, color: COLORS.textSub, marginBottom: 8 }}>Si esta tarjeta débito es de una cuenta (ej. BCP débito → cuenta BCP), vincula para que compartan el saldo.</Text>
+                            <Chips
+                              options={[{ key: null, label: 'Sin vincular' }, ...finance.accounts.map(a => ({ key: a.id, label: a.name }))]}
+                              value={f.linkedTo ?? null}
+                              onChange={(v) => set('linkedTo', v)}
+                            />
+                          </View>
+                        </Field>
+                      )}
+                    </>
                   )}
                 </>
               )}
@@ -409,14 +500,30 @@ export default function FinanzasScreen({ navigation, route }) {
                   <Field label="Nombre"><TextInput style={styles.input} value={f.name} onChangeText={(v) => set('name', v)} placeholder="Ej. Préstamo auto" placeholderTextColor={COLORS.textMuted} /></Field>
                   <Field label="Tipo de prestamista"><Chips options={LOAN_TYPES} value={f.lenderType} onChange={(v) => set('lenderType', v)} /></Field>
                   <Field label="Moneda"><Chips options={CUR_OPTS} value={f.currency} onChange={(v) => set('currency', v)} /></Field>
+                  <Field label="Frecuencia de cuotas"><Chips options={FREQ_OPTS} value={f.frequency || 'mensual'} onChange={(v) => set('frequency', v)} /></Field>
                   <Row>
                     <Half label="Cuota"><TextInput style={styles.input} value={String(f.installment)} onChangeText={(v) => set('installment', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
-                    <Half label="Interés (%)"><TextInput style={styles.input} value={String(f.interest)} onChangeText={(v) => set('interest', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                    <Half label="Interés (% TEA)"><TextInput style={styles.input} value={String(f.interest)} onChangeText={(v) => set('interest', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
                   </Row>
                   <Row>
                     <Half label="Cuotas totales"><TextInput style={styles.input} value={String(f.installmentsTotal)} onChangeText={(v) => set('installmentsTotal', v)} keyboardType="numeric" placeholder="Ej. 36" placeholderTextColor={COLORS.textMuted} /></Half>
                     <Half label="Cuotas pagadas"><TextInput style={styles.input} value={String(f.installmentsPaid)} onChangeText={(v) => set('installmentsPaid', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
                   </Row>
+                  {(() => {
+                    const inst = num(f.installment); const tot = num(f.installmentsTotal); const cap = num(f.amount || (inst * tot));
+                    if (inst > 0 && tot > 0) {
+                      const totalCost = inst * tot;
+                      const intTotal = Math.max(0, totalCost - cap);
+                      return (
+                        <View style={[styles.payNote, { borderColor: COLORS.amber + '88', marginBottom: 8 }]}>
+                          <Text style={[styles.payNoteText, { color: COLORS.amber }]}>
+                            Costo total: {inst * tot} · Interés aprox: {intTotal.toFixed(0)}{f.interest ? ` · TEA: ${f.interest}%` : ''}
+                          </Text>
+                        </View>
+                      );
+                    }
+                    return null;
+                  })()}
                   <Row>
                     <Half label="Inicio"><TextInput style={styles.input} value={f.startDate} onChangeText={(v) => set('startDate', v)} placeholder="Ej. 01/2026" placeholderTextColor={COLORS.textMuted} /></Half>
                     <Half label="Fin"><TextInput style={styles.input} value={f.endDate} onChangeText={(v) => set('endDate', v)} placeholder="Ej. 12/2028" placeholderTextColor={COLORS.textMuted} /></Half>
@@ -436,13 +543,29 @@ export default function FinanzasScreen({ navigation, route }) {
                   <Field label="Fecha límite"><TextInput style={styles.input} value={f.dueDate} onChangeText={(v) => set('dueDate', v)} placeholder="Ej. 30/06/2026" placeholderTextColor={COLORS.textMuted} /></Field>
                 </>
               )}
+              {modal?.type === 'receivable' && (
+                <>
+                  <Field label="Descripción"><TextInput style={styles.input} value={f.name} onChangeText={(v) => set('name', v)} placeholder="Ej. Préstamo a Juan" placeholderTextColor={COLORS.textMuted} /></Field>
+                  <Field label="Deudor (¿quién te debe?)"><TextInput style={styles.input} value={f.debtor} onChangeText={(v) => set('debtor', v)} placeholder="Nombre completo" placeholderTextColor={COLORS.textMuted} /></Field>
+                  <Field label="Moneda"><Chips options={CUR_OPTS} value={f.currency} onChange={(v) => set('currency', v)} /></Field>
+                  <Row>
+                    <Half label="Monto prestado"><TextInput style={styles.input} value={String(f.amount)} onChangeText={(v) => set('amount', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                    <Half label="Ya cobrado"><TextInput style={styles.input} value={String(f.paid)} onChangeText={(v) => set('paid', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                  </Row>
+                  <Row>
+                    <Half label="Interés (% anual)"><TextInput style={styles.input} value={String(f.interest)} onChangeText={(v) => set('interest', v)} keyboardType="numeric" placeholder="0" placeholderTextColor={COLORS.textMuted} /></Half>
+                    <Half label="Fecha límite"><TextInput style={styles.input} value={f.dueDate} onChangeText={(v) => set('dueDate', v)} placeholder="Ej. 30/06/2026" placeholderTextColor={COLORS.textMuted} /></Half>
+                  </Row>
+                  <Field label="Notas (opcional)"><TextInput style={styles.input} value={f.notes} onChangeText={(v) => set('notes', v)} placeholder="Contexto, acuerdo..." placeholderTextColor={COLORS.textMuted} /></Field>
+                </>
+              )}
               {modal?.type === 'gastoFijo' && (
                 <>
                   <Field label="Nombre"><TextInput style={styles.input} value={f.name} onChangeText={(v) => set('name', v)} placeholder="Ej. Alquiler, Netflix, Luz..." placeholderTextColor={COLORS.textMuted} /></Field>
                   <Field label="Moneda"><Chips options={CUR_OPTS} value={f.currency} onChange={(v) => set('currency', v)} /></Field>
                   <Field label="Monto"><TextInput style={styles.input} value={String(f.amount)} onChangeText={(v) => set('amount', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
                   <Field label="Categoría">
-                    <Dropdown options={userCategories(settings).map((c) => ({ key: c, label: c, color: categoryColor(c) }))} value={f.category} onChange={(v) => set('category', v)} />
+                    <Dropdown options={gastoCats} value={f.category} onChange={(v) => set('category', v)} />
                   </Field>
                   <Field label="Frecuencia">
                     <Chips options={[{ key: 'mensual', label: 'Mensual' }, { key: 'semanal', label: 'Semanal' }, { key: 'anual', label: 'Anual' }]} value={f.period} onChange={(v) => set('period', v)} />
@@ -462,7 +585,7 @@ export default function FinanzasScreen({ navigation, route }) {
             <TouchableOpacity style={styles.saveBtn} onPress={save} activeOpacity={0.85}>
               <Text style={styles.saveText}>{modal?.id ? 'Guardar cambios' : 'Agregar'}</Text>
             </TouchableOpacity>
-            {modal?.id && modal.type !== 'movement' && (
+            {modal?.id && (
               <TouchableOpacity style={styles.delModalBtn} onPress={onDeleteCurrent} activeOpacity={0.85}>
                 <Ionicons name="trash-outline" size={18} color={COLORS.red} />
                 <Text style={styles.delModalText}>Eliminar</Text>
@@ -477,7 +600,7 @@ export default function FinanzasScreen({ navigation, route }) {
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
             <View style={styles.sheetHead}>
-              <Text style={styles.sheetTitle}>{pay?.mode === 'loanAdd' ? 'Solicitar monto adicional' : pay?.mode === 'card' ? `Pagar: ${pay?.item?.bank || 'Tarjeta'}` : 'Registrar pago'}</Text>
+              <Text style={styles.sheetTitle}>{pay?.mode === 'loanAdd' ? 'Solicitar monto adicional' : pay?.mode === 'card' ? `Pagar: ${pay?.item?.bank || 'Tarjeta'}` : pay?.mode === 'receivable' ? 'Registrar cobro' : 'Registrar pago'}</Text>
               <TouchableOpacity onPress={() => setPay(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
             </View>
             {pay && (
@@ -494,8 +617,8 @@ export default function FinanzasScreen({ navigation, route }) {
                 <Field label={pay.mode === 'loanAdd' ? 'Recibir en cuenta (opcional)' : 'Pagar desde (opcional)'}>
                   <Chips options={[{ key: null, label: 'Sin cuenta' }, ...finance.accounts.map((a) => ({ key: a.id, label: a.name }))]} value={pay.accountId} onChange={(v) => setPay((p) => ({ ...p, accountId: v }))} />
                 </Field>
-                <Text style={styles.payHint}>{pay.mode === 'loanAdd' ? 'Aumenta el saldo del préstamo. Si eliges cuenta, ese dinero se suma ahí.' : pay.mode === 'card' ? 'Descuenta del saldo de la tarjeta y de la cuenta elegida. Aparece como gasto en tu historial.' : 'Baja el saldo pendiente. Si eliges cuenta, se descuenta de ahí y aparece en tus gastos (categoría Deudas).'}</Text>
-                <TouchableOpacity style={styles.saveBtn} onPress={savePay} activeOpacity={0.85}><Text style={styles.saveText}>{pay.mode === 'loanAdd' ? 'Agregar monto' : 'Registrar pago'}</Text></TouchableOpacity>
+                <Text style={styles.payHint}>{pay.mode === 'loanAdd' ? 'Aumenta el saldo del préstamo. Si eliges cuenta, ese dinero se suma ahí.' : pay.mode === 'card' ? 'Descuenta del saldo de la tarjeta y de la cuenta elegida. Aparece como gasto en tu historial.' : pay.mode === 'receivable' ? 'Registra un cobro parcial o total. Si eliges cuenta, el monto se suma como ingreso.' : 'Baja el saldo pendiente. Si eliges cuenta, se descuenta de ahí y aparece en tus gastos (categoría Deudas).'}</Text>
+                <TouchableOpacity style={styles.saveBtn} onPress={savePay} activeOpacity={0.85}><Text style={styles.saveText}>{pay.mode === 'loanAdd' ? 'Agregar monto' : pay.mode === 'receivable' ? 'Registrar cobro' : 'Registrar pago'}</Text></TouchableOpacity>
               </>
             )}
           </View>
@@ -507,35 +630,53 @@ export default function FinanzasScreen({ navigation, route }) {
         <View style={styles.backdrop}>
           <View style={styles.sheet}>
             <View style={styles.sheetHead}>
-              <Text style={styles.sheetTitle}>Historial · {historyFor?.label || ''}</Text>
+              <Text style={styles.sheetTitle}>{historyFor?.kind === 'receivable' ? 'Cobros' : 'Pagos'} · {historyFor?.label || ''}</Text>
               <TouchableOpacity onPress={() => setHistoryFor(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
             </View>
             {historyFor && (() => {
               const list = (finance.payments || []).filter((p) => p.kind === historyFor.kind && p.refId === historyFor.refId).sort((a, b) => (b.date || '').localeCompare(a.date || ''));
               const accName = (id) => id ? (finance.accounts.find((a) => a.id === id)?.name || '—') : 'Sin cuenta';
               const total = list.reduce((s, p) => s + (p.amount || 0), 0);
+              const isReceivable = historyFor.kind === 'receivable';
+              const kindLabel = historyFor.kind === 'card' ? 'tarjeta' : historyFor.kind === 'loan' ? 'préstamo' : historyFor.kind === 'receivable' ? 'cuenta por cobrar' : 'deuda';
               if (list.length === 0) {
                 return (
                   <View style={{ alignItems: 'center', padding: 28 }}>
                     <Ionicons name="time-outline" size={40} color={COLORS.textMuted} />
-                    <Text style={[styles.hint, { textAlign: 'center', marginTop: 10 }]}>Aún no hay pagos registrados para este {historyFor.kind === 'card' ? 'tarjeta' : historyFor.kind === 'loan' ? 'préstamo' : 'deuda'}.</Text>
+                    <Text style={[styles.hint, { textAlign: 'center', marginTop: 10 }]}>Aún no hay {isReceivable ? 'cobros' : 'pagos'} registrados para este {kindLabel}.</Text>
                   </View>
                 );
               }
               return (
                 <>
-                  <View style={[styles.payNote, { borderColor: COLORS.green + '88', marginBottom: 12 }]}>
-                    <Text style={[styles.payNoteText, { color: COLORS.green }]}>Total pagado: {formatMoney(total, historyFor.currency)} · {list.length} pago{list.length > 1 ? 's' : ''}</Text>
+                  <View style={[styles.payNote, { borderColor: (isReceivable ? COLORS.green : COLORS.green) + '88', marginBottom: 12 }]}>
+                    <Text style={[styles.payNoteText, { color: COLORS.green }]}>Total {isReceivable ? 'cobrado' : 'pagado'}: {formatMoney(total, historyFor.currency)} · {list.length} registro{list.length > 1 ? 's' : ''}</Text>
                   </View>
-                  <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+                  <ScrollView style={{ maxHeight: 340 }} showsVerticalScrollIndicator={false}>
                     {list.map((p) => (
                       <View key={p.id} style={styles.histRow}>
                         <Ionicons name="checkmark-circle" size={18} color={COLORS.green} />
                         <View style={{ flex: 1 }}>
                           <Text style={styles.histAmt}>{formatMoney(p.amount, historyFor.currency)}</Text>
-                          <Text style={styles.histSub}>Desde: {accName(p.accountId)}</Text>
+                          <Text style={styles.histSub}>{isReceivable ? 'A cuenta:' : 'Desde:'} {accName(p.accountId)}</Text>
                         </View>
                         <Text style={styles.histDate}>{p.date}</Text>
+                        <TouchableOpacity
+                          onPress={() => setEditPayment({ id: p.id, amount: String(p.amount), date: p.date || '' })}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                          style={{ marginRight: 8 }}
+                        >
+                          <Ionicons name="pencil-outline" size={16} color={COLORS.purpleLight} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => Alert.alert(`Eliminar ${isReceivable ? 'cobro' : 'pago'}`, `¿Eliminar este ${isReceivable ? 'cobro' : 'pago'} de ${formatMoney(p.amount, historyFor.currency)}? Se revertirá el monto.`, [
+                            { text: 'Cancelar' },
+                            { text: 'Eliminar', style: 'destructive', onPress: async () => { await store.deletePayment(p.id); } }
+                          ])}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={COLORS.red} />
+                        </TouchableOpacity>
                       </View>
                     ))}
                   </ScrollView>
@@ -545,33 +686,106 @@ export default function FinanzasScreen({ navigation, route }) {
           </View>
         </View>
       </Modal>
+
+      {/* Modal: menú de secciones */}
+      <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
+        <TouchableOpacity style={styles.backdrop} activeOpacity={1} onPress={() => setMenuOpen(false)}>
+          <View style={styles.tabGrid} onStartShouldSetResponder={() => true}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Secciones</Text>
+              <TouchableOpacity onPress={() => setMenuOpen(false)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
+            </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12 }}>
+              {TABS.map((t) => {
+                const isActive = tab === t.key;
+                return (
+                  <TouchableOpacity
+                    key={t.key}
+                    style={[styles.tabTile, isActive && { borderColor: t.color, borderWidth: 2 }]}
+                    onPress={() => { setTab(t.key); setMenuOpen(false); }}
+                    activeOpacity={0.8}
+                  >
+                    <View style={[styles.tabTileIcon, { backgroundColor: t.color + '22' }]}>
+                      <Ionicons name={t.icon} size={22} color={t.color} />
+                    </View>
+                    <Text style={[styles.tabTileLabel, isActive && { color: t.color, fontWeight: '700' }]}>{t.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal: editar pago/cobro */}
+      <Modal visible={!!editPayment} transparent animationType="fade" onRequestClose={() => setEditPayment(null)}>
+        <View style={styles.backdrop}>
+          <View style={[styles.sheet, { paddingBottom: 20 }]}>
+            <View style={styles.sheetHead}>
+              <Text style={styles.sheetTitle}>Editar registro</Text>
+              <TouchableOpacity onPress={() => setEditPayment(null)}><Ionicons name="close" size={24} color={COLORS.textSub} /></TouchableOpacity>
+            </View>
+            {editPayment && (
+              <>
+                <Field label="Monto">
+                  <TextInput style={styles.input} value={editPayment.amount} onChangeText={(v) => setEditPayment((p) => ({ ...p, amount: v }))} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} autoFocus />
+                </Field>
+                <Field label="Fecha (yyyy-mm-dd)">
+                  <TextInput style={styles.input} value={editPayment.date} onChangeText={(v) => setEditPayment((p) => ({ ...p, date: v }))} placeholder="2026-06-14" placeholderTextColor={COLORS.textMuted} />
+                </Field>
+                <TouchableOpacity style={styles.saveBtn} onPress={async () => {
+                  const amt = num(editPayment.amount);
+                  if (amt <= 0) { Alert.alert('Monto inválido', 'Ingresa un monto mayor a 0.'); return; }
+                  await store.updatePayment(editPayment.id, { amount: amt, date: editPayment.date });
+                  setEditPayment(null);
+                }} activeOpacity={0.85}>
+                  <Text style={styles.saveText}>Guardar cambios</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 function titleFor(modal) {
-  return { account: 'Cuenta', movement: 'Movimiento', card: 'Tarjeta de crédito', loan: 'Préstamo', debt: 'Deuda', gastoFijo: 'Gasto fijo recurrente' }[modal.type];
+  const base = { account: 'Cuenta', movement: 'Movimiento', card: 'Tarjeta de crédito', loan: 'Préstamo', debt: 'Deuda', gastoFijo: 'Gasto fijo recurrente', receivable: 'Cuenta por cobrar' }[modal.type];
+  return modal.id && modal.type === 'movement' ? 'Editar movimiento' : base;
 }
 const Row = ({ children }) => <View style={{ flexDirection: 'row', gap: 12 }}>{children}</View>;
 const Half = ({ label, children }) => <View style={{ flex: 1, marginBottom: 14 }}><Text style={styles.fLabel}>{label}</Text>{children}</View>;
 
 // ───────────── SECCIONES ─────────────
-function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
+function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx }) {
+  const [chartMode, setChartMode] = useState('gasto');
   const cats = Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1]);
+  const incCats = Object.entries(stats.byIncome || {}).sort((a, b) => b[1] - a[1]);
   const maxCat = cats.length ? cats[0][1] : 1;
   const accName = (id) => finance.accounts.find((a) => a.id === id)?.name || '—';
   const srcName = (t) => (t.cardId ? '💳 ' + (finance.cards.find((c) => c.id === t.cardId)?.bank || 'Tarjeta') : accName(t.accountId));
   const [search, setSearch] = useState('');
-  const recent = finance.transactions
-    .filter((t) => {
-      if (!search.trim()) return true;
+  const totalBalance = netWorth(finance);
+
+  // Filter transactions by period when no search term, show all when searching
+  const [s, e] = periodRange(period);
+  const recent = finance.transactions.filter((t) => {
+    if (search.trim()) {
       const q = search.toLowerCase();
       return (t.note || '').toLowerCase().includes(q) || (t.category || '').toLowerCase().includes(q) || srcName(t).toLowerCase().includes(q);
-    })
-    .slice(0, 15);
+    }
+    try { const d = parseISO(t.date); return d >= s && d <= e; } catch { return false; }
+  });
 
   return (
     <View>
+      {/* Saldo consolidado */}
+      <View style={[styles.totalCard, { marginBottom: 12 }]}>
+        <Text style={styles.statLbl}>Saldo consolidado</Text>
+        <Text style={[styles.totalVal, { color: totalBalance >= 0 ? COLORS.green : COLORS.red }]}>{totalBalance >= 0 ? '+' : ''}{formatMoney(totalBalance, cur)}</Text>
+      </View>
+
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
         {PERIODS.map((p) => (
           <TouchableOpacity key={p.key} onPress={() => setPeriod(p.key)} style={[styles.chip, period === p.key && styles.chipOn]}>
@@ -589,27 +803,42 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
         <Text style={[styles.balanceVal, { color: stats.balance >= 0 ? COLORS.green : COLORS.red }]}>{stats.balance >= 0 ? '+' : ''}{formatMoney(stats.balance, cur)}</Text>
       </View>
 
-      <Text style={styles.secTitle}>Gastos por categoría</Text>
-      {cats.length === 0 ? <Text style={styles.hint}>Sin gastos en este periodo.</Text> : (
-        <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', gap: 16, flexWrap: 'wrap' }]}>
-          <PieChart
-            data={cats.slice(0, 6).map(([c, v]) => ({ key: c, value: v, color: categoryColor(c) }))}
-            size={140}
-            thickness={24}
-            centerLabel="Total"
-            centerValue={formatMoney(stats.gastos, cur)}
-          />
-          <View style={{ flex: 1, minWidth: 140, gap: 6 }}>
-            {cats.slice(0, 6).map(([c, v]) => (
-              <View key={c} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: categoryColor(c) }} />
-                <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{c}</Text>
-                <Text style={{ fontSize: 11, color: COLORS.textSub, fontWeight: '600' }}>{Math.round((v / stats.gastos) * 100)}%</Text>
-              </View>
-            ))}
-          </View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 6 }}>
+        <Text style={styles.secTitle}>Por categoría</Text>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {[{ k: 'gasto', label: 'Gastos', color: COLORS.red }, { k: 'ingreso', label: 'Ingresos', color: COLORS.green }].map(({ k, label, color }) => (
+            <TouchableOpacity key={k} onPress={() => setChartMode(k)} style={{ paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, backgroundColor: chartMode === k ? color + '22' : COLORS.card, borderWidth: 0.5, borderColor: chartMode === k ? color : COLORS.cardBorder }}>
+              <Text style={{ fontSize: 12, color: chartMode === k ? color : COLORS.textMuted, fontWeight: '600' }}>{label}</Text>
+            </TouchableOpacity>
+          ))}
         </View>
-      )}
+      </View>
+      {(() => {
+        const isInc = chartMode === 'ingreso';
+        const data = isInc ? incCats : cats;
+        const total = isInc ? stats.ingresos : stats.gastos;
+        const color = isInc ? COLORS.green : COLORS.red;
+        if (data.length === 0) return <Text style={styles.hint}>{isInc ? 'Sin ingresos' : 'Sin gastos'} en este periodo.</Text>;
+        return (
+          <View style={[styles.card, { flexDirection: 'row', alignItems: 'center', gap: 16, flexWrap: 'wrap' }]}>
+            <PieChart
+              data={data.slice(0, 6).map(([c, v]) => ({ key: c, value: v, color: categoryColor(c) }))}
+              size={140} thickness={24}
+              centerLabel={isInc ? 'Ingresos' : 'Gastos'}
+              centerValue={formatMoney(total, cur)}
+            />
+            <View style={{ flex: 1, minWidth: 140, gap: 6 }}>
+              {data.slice(0, 6).map(([c, v]) => (
+                <View key={c} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={{ width: 10, height: 10, borderRadius: 3, backgroundColor: categoryColor(c) }} />
+                  <Text style={{ flex: 1, fontSize: 12, color: COLORS.text }} numberOfLines={1}>{c}</Text>
+                  <Text style={{ fontSize: 11, color: COLORS.textSub, fontWeight: '600' }}>{total > 0 ? Math.round((v / total) * 100) : 0}%</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        );
+      })()}
 
       <Text style={styles.secTitle}>Últimos movimientos</Text>
       <View style={styles.searchBox}>
@@ -617,7 +846,9 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
         <TextInput style={styles.searchInput} value={search} onChangeText={setSearch} placeholder="Buscar movimiento, categoría o cuenta…" placeholderTextColor={COLORS.textMuted} />
         {search.length > 0 && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color={COLORS.textMuted} /></TouchableOpacity>}
       </View>
-      {recent.length === 0 ? <Text style={styles.hint}>Aún no registras movimientos. Usa el botón +.</Text> : (
+      {recent.length === 0 ? (
+        <Text style={styles.hint}>{search.trim() ? `Sin resultados para "${search}".` : 'Sin movimientos en este periodo. Cambia el filtro o usa el botón +.'}</Text>
+      ) : (
         <View style={styles.card}>
           {recent.map((t) => {
             const tt = TX_TYPES.find((x) => x.key === t.type);
@@ -633,6 +864,7 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
                   <Text style={styles.txSub}>{srcName(t)}{t.type === 'transferencia' ? ` → ${accName(t.toAccountId)}` : ''} · {t.date}{t.time ? ` ${t.time}` : ''}</Text>
                 </View>
                 <Text style={[styles.txAmt, { color: tt.color }]}>{sign}{formatMoney(t.amount, cur)}</Text>
+                <TouchableOpacity onPress={() => onEditTx(t)} style={{ padding: 4 }}><Ionicons name="pencil-outline" size={15} color={COLORS.textMuted} /></TouchableOpacity>
                 <TouchableOpacity onPress={() => onDelTx(t.id)} style={{ padding: 4 }}><Ionicons name="close" size={16} color={COLORS.textMuted} /></TouchableOpacity>
               </View>
             );
@@ -644,21 +876,31 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx }) {
 }
 
 function Cuentas({ finance, cur, onAdd, onMove, onEdit, onDel }) {
-  const total = finance.accounts.filter((a) => a.currency === cur).reduce((s, a) => s + (a.balance || 0), 0);
+  // Patrimonio real: excluir vinculadas (su saldo ya está en la cuenta padre)
+  const total = finance.accounts.filter((a) => !a.linkedTo && a.currency === cur).reduce((s, a) => s + (a.balance || 0), 0);
   if (finance.accounts.length === 0) {
     return <EmptyState icon="wallet-outline" title="Sin cuentas" subtitle="Agrega tus cuentas (Yape, Plin, BCP, efectivo...) para llevar tus saldos." actionLabel="Agregar cuenta" onAction={onAdd} />;
   }
+  const accName = (id) => finance.accounts.find(a => a.id === id)?.name || '';
   return (
     <View>
       <View style={styles.totalCard}><Text style={styles.statLbl}>Total en cuentas ({cur})</Text><Text style={styles.totalVal}>{formatMoney(total, cur)}</Text></View>
       <TouchableOpacity style={styles.outlineBtn} onPress={onMove}><Ionicons name="swap-vertical-outline" size={18} color={COLORS.purpleLight} /><Text style={styles.outlineBtnText}>Registrar movimiento</Text></TouchableOpacity>
       {finance.accounts.map((a) => {
         const t = accountType(a.type);
+        const parentName = a.linkedTo ? accName(a.linkedTo) : null;
         return (
-          <TouchableOpacity key={a.id} style={styles.listCard} onPress={() => onEdit(a)} onLongPress={() => onDel(a)} activeOpacity={0.8}>
+          <TouchableOpacity key={a.id} style={[styles.listCard, a.linkedTo && { borderLeftWidth: 3, borderLeftColor: COLORS.blue }]} onPress={() => onEdit(a)} onLongPress={() => onDel(a)} activeOpacity={0.8}>
             <View style={[styles.listIcon, { backgroundColor: t.color + '22' }]}><Ionicons name={t.icon} size={20} color={t.color} /></View>
-            <View style={{ flex: 1 }}><Text style={styles.listTitle}>{a.name}</Text><Text style={styles.listSub}>{t.label}</Text></View>
-            <Text style={[styles.listAmt, { color: (a.balance || 0) >= 0 ? COLORS.text : COLORS.red }]}>{formatMoney(a.balance, a.currency)}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.listTitle}>{a.name}</Text>
+              <Text style={styles.listSub}>{t.label}{parentName ? ` · vinculada a ${parentName}` : ''}</Text>
+            </View>
+            {a.linkedTo && <View style={[styles.kindBadge, { backgroundColor: COLORS.blueDim }]}><Text style={[styles.kindBadgeText, { color: COLORS.blue }]}>Vinculada</Text></View>}
+            {(() => {
+              const displayBal = a.linkedTo ? (finance.accounts.find(p => p.id === a.linkedTo)?.balance ?? a.balance ?? 0) : (a.balance ?? 0);
+              return <Text style={[styles.listAmt, { color: displayBal >= 0 ? COLORS.text : COLORS.red }]}>{formatMoney(displayBal, a.currency)}</Text>;
+            })()}
           </TouchableOpacity>
         );
       })}
@@ -720,7 +962,9 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay, onHistory 
                 )}
               </>
             ) : (
-              <Text style={styles.debitoNote}>Saldo: {formatMoney(c.balance, c.currency)}</Text>
+              <Text style={styles.debitoNote}>
+                {`Saldo: ${formatMoney(c.linkedTo ? (finance.accounts.find(a => a.id === c.linkedTo)?.balance ?? c.balance ?? 0) : (c.balance ?? 0), c.currency)}${c.linkedTo && finance.accounts.find(a => a.id === c.linkedTo) ? ` · Vinculada a ${finance.accounts.find(a => a.id === c.linkedTo).name}` : ''}`}
+              </Text>
             )}
           </TouchableOpacity>
         );
@@ -743,14 +987,23 @@ function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore, onHistory 
         const pend = loanPending(l);
         const base = l.amount || (l.installment || 0) * (l.installmentsTotal || 0) || pend;
         const pct = base > 0 ? Math.min(100, Math.round(((base - pend) / base) * 100)) : 0;
+        const tc = loanTotalCost(l);
         return (
           <View key={l.id} style={styles.bigCard}>
             <TouchableOpacity onPress={() => onEdit(l)} onLongPress={() => onDel(l)} activeOpacity={0.85}>
               <View style={styles.bigCardHead}>
                 <Ionicons name={t.icon} size={20} color={t.color} />
                 <Text style={styles.bigCardTitle}>{l.name}</Text>
+                {l.frequency && l.frequency !== 'mensual' && <View style={styles.kindBadge}><Text style={styles.kindBadgeText}>{l.frequency}</Text></View>}
                 <Text style={[styles.bigCardCur, { color: t.color }]}>{t.label}</Text>
               </View>
+              {tc && tc.interestTotal > 0 && (
+                <View style={[styles.payNote, { borderColor: COLORS.amber + '66', marginBottom: 8, padding: 8 }]}>
+                  <Text style={[styles.payNoteText, { color: COLORS.amber, fontSize: 11 }]}>
+                    Total a pagar: {formatMoney(tc.totalCost, l.currency)}{tc.interestTotal > 0 ? ` · Interés: ${formatMoney(tc.interestTotal, l.currency)}` : ''}{l.interest ? ` · TEA ${l.interest}%` : ''}
+                  </Text>
+                </View>
+              )}
               <View style={styles.cardUseBg}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: COLORS.green }]} /></View>
               <View style={styles.cardRow2}>
                 <Text style={styles.cardUsed}>Pagado {pct}%</Text>
@@ -843,6 +1096,60 @@ function Deudas({ finance, onEdit, onDel, onAdd, onPay, onHistory }) {
   );
 }
 
+function CuentasCobrar({ finance, onEdit, onDel, onAdd, onCollect, onHistory }) {
+  const receivables = finance.receivables || [];
+  if (receivables.length === 0) {
+    return <EmptyState icon="cash-outline" title="Sin cuentas por cobrar" subtitle="Registra a quién le prestaste dinero, el monto y cuándo vence. Lleva el seguimiento de cobros." actionLabel="Agregar cuenta por cobrar" onAction={onAdd} />;
+  }
+  const totalPend = receivables.reduce((s, r) => s + Math.max(0, (r.amount || 0) - (r.paid || 0)), 0);
+  return (
+    <View>
+      <View style={styles.totalCard}>
+        <Text style={styles.statLbl}>Total por cobrar</Text>
+        <Text style={[styles.totalVal, { color: COLORS.green }]}>{formatMoney(totalPend, receivables[0]?.currency || 'PEN')}</Text>
+      </View>
+      {receivables.map((r) => {
+        const pct = r.amount ? Math.min(100, Math.round(((r.paid || 0) / r.amount) * 100)) : 0;
+        const rem = Math.max(0, (r.amount || 0) - (r.paid || 0));
+        const done = rem <= 0;
+        return (
+          <View key={r.id} style={[styles.bigCard, { borderLeftWidth: 4, borderLeftColor: done ? COLORS.green : COLORS.blue }]}>
+            <TouchableOpacity onPress={() => onEdit(r)} onLongPress={() => onDel(r)} activeOpacity={0.85}>
+              <View style={styles.bigCardHead}>
+                <Ionicons name="person-outline" size={20} color={done ? COLORS.green : COLORS.blue} />
+                <Text style={styles.bigCardTitle}>{r.name || r.debtor || 'Préstamo'}</Text>
+                {done && <View style={[styles.kindBadge, { backgroundColor: COLORS.greenDim }]}><Text style={[styles.kindBadgeText, { color: COLORS.green }]}>Cobrado</Text></View>}
+                {r.interest > 0 && !done && <View style={styles.kindBadge}><Text style={styles.kindBadgeText}>{r.interest}% int.</Text></View>}
+                <Text style={styles.bigCardCur}>{r.currency}</Text>
+              </View>
+              {r.debtor ? <Text style={styles.listSub}>Deudor: {r.debtor}{r.dueDate ? ` · vence ${r.dueDate}` : ''}</Text> : (r.dueDate ? <Text style={styles.listSub}>Vence {r.dueDate}</Text> : null)}
+              <View style={[styles.cardUseBg, { marginTop: 10 }]}><View style={[styles.cardUseFill, { width: `${pct}%`, backgroundColor: COLORS.green }]} /></View>
+              <View style={styles.cardRow2}>
+                <Text style={styles.cardUsed}>Cobrado {formatMoney(r.paid || 0, r.currency)} ({pct}%)</Text>
+                <Text style={[styles.cardAvail, { color: done ? COLORS.green : COLORS.blue }]}>{done ? '¡Completado!' : `Falta ${formatMoney(rem, r.currency)}`}</Text>
+              </View>
+              {r.notes ? <Text style={[styles.listSub, { marginTop: 6 }]}>{r.notes}</Text> : null}
+            </TouchableOpacity>
+            {!done && (
+              <View style={styles.payRow}>
+                <TouchableOpacity style={styles.payBtn} onPress={() => onCollect(r)}>
+                  <Ionicons name="cash-outline" size={16} color={COLORS.green} />
+                  <Text style={[styles.payBtnText, { color: COLORS.green }]}>Registrar cobro</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <TouchableOpacity style={[styles.payBtn, { marginTop: 6, backgroundColor: 'transparent' }]} onPress={() => onHistory(r)} activeOpacity={0.85}>
+              <Ionicons name="time-outline" size={16} color={COLORS.purpleLight} />
+              <Text style={[styles.payBtnText, { color: COLORS.purpleLight }]}>Ver historial de cobros</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+      <Text style={styles.tip}>Toca para editar · mantén presionado para eliminar</Text>
+    </View>
+  );
+}
+
 const PERIOD_LABELS = { mensual: 'Mensual', semanal: 'Semanal', anual: 'Anual' };
 const PERIOD_MULT = { mensual: 1, semanal: 4.33, anual: 1 / 12 };
 
@@ -862,7 +1169,7 @@ function GastosFijos({ finance, cur, onEdit, onDel, onAdd, settings }) {
         <Text style={[styles.totalVal, { color: COLORS.red }]}>{formatMoney(monthlyTotal, cur)}</Text>
       </View>
       {lista.map((g) => (
-        <TouchableOpacity key={g.id} style={[styles.listCard, !g.active && { opacity: 0.45 }]} onPress={() => onEdit(g)} onLongPress={() => onDel(g)} activeOpacity={0.8}>
+        <TouchableOpacity key={g.id} style={[styles.listCard, !g.active && { opacity: 0.62 }]} onPress={() => onEdit(g)} onLongPress={() => onDel(g)} activeOpacity={0.8}>
           <View style={[styles.listIcon, { backgroundColor: categoryColor(g.category) + '22' }]}>
             <Ionicons name="repeat-outline" size={20} color={categoryColor(g.category)} />
           </View>
@@ -882,27 +1189,30 @@ const Mini = ({ label, val }) => <View style={styles.mini}><Text style={styles.m
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
-  hero: { padding: 24, paddingTop: 56, borderBottomLeftRadius: 28, borderBottomRightRadius: 28 },
-  heroTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text },
-  heroSub: { fontSize: 13, color: COLORS.purpleLight, marginTop: 4 },
-  tabsWrap: { paddingVertical: 12, backgroundColor: COLORS.bg },
-  tab: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 0.5, borderColor: COLORS.cardBorder },
-  tabOn: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
-  tabText: { fontSize: 13, color: COLORS.textSub, fontWeight: '600' },
-  tabTextOn: { color: '#fff' },
+  hero: { padding: 24, paddingTop: 56, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4 },
+  heroTitle: { fontSize: 26, fontWeight: '800', color: COLORS.text },
+  heroSub: { fontSize: 13, color: COLORS.purple, marginTop: 4, fontWeight: '600' },
+  navBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginHorizontal: 16, marginVertical: 10, backgroundColor: COLORS.card, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  navIcon: { width: 34, height: 34, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  navTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text },
+  navMenuBtn: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.purpleDim },
+  tabGrid: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32, marginTop: 'auto' },
+  tabTile: { width: '30%', backgroundColor: COLORS.card, borderRadius: 14, padding: 14, alignItems: 'center', gap: 8, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  tabTileIcon: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  tabTileLabel: { fontSize: 12, color: COLORS.textSub, fontWeight: '600', textAlign: 'center' },
   container: { paddingHorizontal: 16, paddingTop: 6 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10, backgroundColor: COLORS.card, borderWidth: 0.5, borderColor: COLORS.cardBorder },
   chipOn: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
   chipText: { fontSize: 13, color: COLORS.textSub },
   chipTextOn: { color: '#fff', fontWeight: '600' },
   statRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
-  statCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder, borderLeftWidth: 3 },
-  statLbl: { fontSize: 12, color: COLORS.textSub },
-  statVal: { fontSize: 17, fontWeight: '800', marginTop: 4 },
+  statCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder, borderLeftWidth: 4 },
+  statLbl: { fontSize: 11, color: COLORS.textSub, fontWeight: '600', letterSpacing: 0.3 },
+  statVal: { fontSize: 22, fontWeight: '800', marginTop: 5, letterSpacing: -0.5 },
   balanceCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 16, borderWidth: 1, marginTop: 10 },
-  balanceVal: { fontSize: 24, fontWeight: '800', marginTop: 4 },
-  secTitle: { fontSize: 15, fontWeight: '700', color: COLORS.text, marginTop: 22, marginBottom: 10 },
-  hint: { fontSize: 13, color: COLORS.textMuted, lineHeight: 19 },
+  balanceVal: { fontSize: 30, fontWeight: '800', marginTop: 6, letterSpacing: -1 },
+  secTitle: { fontSize: 15, fontWeight: '800', color: COLORS.text, marginTop: 22, marginBottom: 10 },
+  hint: { fontSize: 13, color: COLORS.textSub, lineHeight: 19 },
   card: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder },
   catRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
   catName: { width: 92, fontSize: 12, color: COLORS.textSub },
@@ -910,11 +1220,11 @@ const styles = StyleSheet.create({
   catBarFill: { height: 8, borderRadius: 4, backgroundColor: COLORS.amber },
   catVal: { fontSize: 12, color: COLORS.text, fontWeight: '600', width: 80, textAlign: 'right' },
   txRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 9, borderBottomWidth: 0.5, borderColor: COLORS.border },
-  txTitle: { fontSize: 14, color: COLORS.text, fontWeight: '500' },
-  txSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
-  txAmt: { fontSize: 14, fontWeight: '700' },
+  txTitle: { fontSize: 14, color: COLORS.text, fontWeight: '600' },
+  txSub: { fontSize: 11, color: COLORS.textSub, marginTop: 1 },
+  txAmt: { fontSize: 15, fontWeight: '800' },
   totalCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 16, borderWidth: 0.5, borderColor: COLORS.cardBorder },
-  totalVal: { fontSize: 24, fontWeight: '800', color: COLORS.text, marginTop: 4 },
+  totalVal: { fontSize: 28, fontWeight: '800', color: COLORS.text, marginTop: 5, letterSpacing: -0.5 },
   outlineBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: COLORS.purple + '66', marginTop: 12, marginBottom: 4 },
   outlineBtnText: { color: COLORS.purpleLight, fontSize: 14, fontWeight: '600' },
   listCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder, marginTop: 10 },

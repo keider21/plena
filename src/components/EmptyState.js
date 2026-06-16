@@ -1,7 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated, Easing } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { COLORS, SHADOW } from '../utils/theme';
 
@@ -40,25 +39,20 @@ export default function EmptyState({
     onAction?.();
   };
 
-  const gradientColors = {
-    default: [COLORS.purple, COLORS.purpleLight],
-    finance: [COLORS.green, '#34D399'],
-    habit:   [COLORS.blue, '#38BDF8'],
-    goal:    [COLORS.amber, '#FBBF24'],
-    plan:    [COLORS.pink, '#F472B6'],
-  }[variant] || [COLORS.purple, COLORS.purpleLight];
+  const iconColor = {
+    default: COLORS.purple,
+    finance: COLORS.green,
+    habit:   COLORS.blue,
+    goal:    COLORS.amber,
+    plan:    COLORS.pink,
+  }[variant] || COLORS.purple;
 
   return (
     <Animated.View style={[styles.wrap, { opacity: fade, transform: [{ scale }] }]}>
       <Animated.View style={[styles.iconOuter, { transform: [{ scale: iconPulse }] }]}>
-        <LinearGradient
-          colors={gradientColors}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.iconWrap}
-        >
+        <View style={[styles.iconWrap, { backgroundColor: iconColor, shadowColor: iconColor, shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 8 }]}>
           <Ionicons name={icon} size={36} color="#fff" />
-        </LinearGradient>
+        </View>
       </Animated.View>
 
       {title ? <Text style={styles.title}>{title}</Text> : null}

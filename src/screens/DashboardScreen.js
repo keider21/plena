@@ -1,16 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
 import { categoryColor } from '../utils/finance';
-import { COLORS, CAT_COLORS } from '../utils/theme';
+import { COLORS, NEOM, CAT_COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
 import { goalProgress, catOf } from '../utils/goals';
-import { registerForPushNotifications } from '../utils/notifications';
+import { registerForPushNotifications, reschedulePlan } from '../utils/notifications';
+import { useStore as useStoreStatic } from '../store/useStore';
 
 const QUOTES = [
   '"Piensa como, habla como, actúa como, viste como."',
@@ -32,7 +32,23 @@ export default function DashboardScreen({ navigation }) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Buenos días' : hour < 19 ? 'Buenas tardes' : 'Buenas noches';
 
-  useEffect(() => { registerForPushNotifications(); }, []);
+  useEffect(() => {
+    registerForPushNotifications();
+
+    // Auto-reprogramar alarmas al abrir la app (cubre reinstalación, reinicio del
+    // teléfono y cambios manuales hechos mientras la app estaba cerrada).
+    const tryReschedule = () => {
+      const { planning, habits } = useStoreStatic.getState();
+      if (!planning?.schedule || !planning?.activities?.length) return false;
+      reschedulePlan(planning, habits).catch(() => {});
+      return true;
+    };
+    // Intento inmediato; si los datos aún no cargaron, reintenta en 2 s
+    if (!tryReschedule()) {
+      const t = setTimeout(tryReschedule, 2000);
+      return () => clearTimeout(t);
+    }
+  }, []);
 
   const activeHabits = habits.filter(h => h.active).slice(0, 4);
   const topGoals = goals.slice(0, 3);
@@ -59,27 +75,13 @@ export default function DashboardScreen({ navigation }) {
   ];
   const goFinance = (q) => { setQuickMenu(false); navigation.navigate('Finanzas', { quickAdd: q }); };
 
+  const realBalance = (storeFinance?.accounts || []).filter(a => !a.linkedTo).reduce((s, a) => s + (a.balance || 0), 0);
+
   return (
     <View style={{ flex: 1 }}>
     <ScrollView style={styles.bg} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('Finanzas')} style={{ margin: 12, marginBottom: 0, borderRadius: 18, overflow: 'hidden' }}>
-        <LinearGradient colors={finance.balance >= 0 ? ['#065F46', '#022C22'] : ['#7F1D1D', '#450A0A']} style={styles.balanceCard}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={styles.balanceLbl}>Balance del mes</Text>
-            <Ionicons name={finance.balance >= 0 ? 'trending-up' : 'trending-down'} size={20} color="#fff" />
-          </View>
-          <Text style={[styles.balanceVal, { color: finance.balance >= 0 ? '#6EE7B7' : '#FCA5A5' }]}>
-            {finance.balance >= 0 ? '+' : ''}{formatMoney(finance.balance, cur)}
-          </Text>
-          <View style={{ flexDirection: 'row', gap: 16, marginTop: 8 }}>
-            <Text style={styles.balanceSub}><Text style={{ color: '#6EE7B7' }}>↑ {formatMoney(finance.ingresos, cur)}</Text> ingresos</Text>
-            <Text style={styles.balanceSub}><Text style={{ color: '#FCA5A5' }}>↓ {formatMoney(finance.gastos, cur)}</Text> gastos</Text>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
-
-      <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.hero}>
+      <View style={styles.hero}>
         <View style={styles.heroTop}>
           <View>
             <Text style={styles.heroGreeting}>{greeting},</Text>
@@ -87,14 +89,14 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.heroDate}>{dayName}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.avatarBtn}>
-            <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.avatar}>
+            <View style={styles.avatar}>
               <Text style={styles.avatarText}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
-            </LinearGradient>
+            </View>
           </TouchableOpacity>
         </View>
 
         <View style={styles.quoteBox}>
-          <Ionicons name="flash" size={14} color={COLORS.purpleLight} style={{ marginRight: 6 }} />
+          <Ionicons name="flash" size={14} color={COLORS.purple} style={{ marginRight: 6 }} />
           <Text style={styles.quoteText}>{quote}</Text>
         </View>
 
@@ -103,7 +105,7 @@ export default function DashboardScreen({ navigation }) {
             <Text style={[styles.statNum, { color: COLORS.green }]}>{stats.done}</Text>
             <Text style={styles.statLbl}>Hechos</Text>
           </View>
-          <View style={[styles.statDivider]} />
+          <View style={styles.statDivider} />
           <View style={styles.statBubble}>
             <Text style={[styles.statNum, { color: COLORS.red }]}>{stats.missed}</Text>
             <Text style={styles.statLbl}>Perdidos</Text>
@@ -115,11 +117,34 @@ export default function DashboardScreen({ navigation }) {
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statBubble}>
-            <Text style={[styles.statNum, { color: COLORS.purpleLight }]}>{overallPct}%</Text>
+            <Text style={[styles.statNum, { color: COLORS.purple }]}>{overallPct}%</Text>
             <Text style={styles.statLbl}>Hoy</Text>
           </View>
         </View>
-      </LinearGradient>
+      </View>
+
+      <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('Finanzas')} style={styles.balanceCard}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Text style={styles.balanceLbl}>Saldo de cuentas</Text>
+          <View style={[styles.balanceTrend, { backgroundColor: (realBalance >= 0 ? COLORS.greenDim : COLORS.redDim) }]}>
+            <Ionicons name={realBalance >= 0 ? 'trending-up' : 'trending-down'} size={16} color={realBalance >= 0 ? COLORS.green : COLORS.red} />
+          </View>
+        </View>
+        <Text style={[styles.balanceVal, { color: realBalance >= 0 ? COLORS.green : COLORS.red }]}
+          numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
+          {realBalance >= 0 ? '+' : ''}{formatMoney(realBalance, cur)}
+        </Text>
+        <View style={{ flexDirection: 'row', gap: 16, marginTop: 10 }}>
+          <View style={styles.balanceSubChip}>
+            <Text style={[styles.balanceSubAmt, { color: COLORS.green }]}>↑ {formatMoney(finance.ingresos, cur)}</Text>
+            <Text style={styles.balanceSubLbl}>ingresos mes</Text>
+          </View>
+          <View style={styles.balanceSubChip}>
+            <Text style={[styles.balanceSubAmt, { color: COLORS.red }]}>↓ {formatMoney(finance.gastos, cur)}</Text>
+            <Text style={styles.balanceSubLbl}>gastos mes</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
 
       <View style={styles.section}>
         <View style={styles.sectionHead}>
@@ -334,65 +359,114 @@ export default function DashboardScreen({ navigation }) {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { paddingBottom: 20 },
-  hero: { padding: 24, paddingTop: 56, borderBottomLeftRadius: 28, borderBottomRightRadius: 28, marginBottom: 8 },
+
+  // ── Hero header (neumorphismo claro) ──────────────────────────────────────
+  hero: {
+    padding: 24, paddingTop: 52,
+    backgroundColor: COLORS.bg,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border,
+    marginBottom: 4,
+  },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 },
-  heroGreeting: { fontSize: 14, color: COLORS.textSub },
+  heroGreeting: { fontSize: 13, color: COLORS.textSub, fontWeight: '500' },
   heroName: { fontSize: 26, fontWeight: '800', color: COLORS.text, marginVertical: 2 },
   heroDate: { fontSize: 12, color: COLORS.textMuted },
   avatarBtn: {},
-  avatar: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  avatarText: { fontSize: 18, fontWeight: '700', color: '#fff' },
-  quoteBox: { flexDirection: 'row', alignItems: 'flex-start', backgroundColor: COLORS.purpleDim + '88', borderRadius: 10, padding: 10, marginBottom: 20 },
-  quoteText: { flex: 1, fontSize: 12, color: COLORS.purpleLight, lineHeight: 18, fontStyle: 'italic' },
+  avatar: {
+    width: 46, height: 46, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center',
+    ...NEOM.chip,
+    backgroundColor: COLORS.purple,
+  },
+  avatarText: { fontSize: 19, fontWeight: '700', color: '#fff' },
+  quoteBox: {
+    flexDirection: 'row', alignItems: 'flex-start',
+    backgroundColor: COLORS.purpleDim,
+    borderRadius: 12, padding: 10, marginBottom: 20,
+  },
+  quoteText: { flex: 1, fontSize: 12, color: COLORS.purple, lineHeight: 18, fontStyle: 'italic' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
-  statBubble: { alignItems: 'center' },
-  statNum: { fontSize: 22, fontWeight: '800' },
-  statLbl: { fontSize: 11, color: COLORS.textMuted, marginTop: 2 },
-  statDivider: { width: 0.5, height: 36, backgroundColor: COLORS.border },
+  statBubble: { alignItems: 'center', paddingVertical: 4 },
+  statNum: { fontSize: 24, fontWeight: '800' },
+  statLbl: { fontSize: 11, color: COLORS.textSub, marginTop: 3, fontWeight: '600' },
+  statDivider: { width: 1, height: 36, backgroundColor: COLORS.border },
+
+  // ── Tarjeta de balance (float neumorfismo) ─────────────────────────────────
+  balanceCard: {
+    margin: 14, marginBottom: 0, padding: 20,
+    ...NEOM.float,
+    borderWidth: 1, borderColor: COLORS.border,
+  },
+  balanceLbl: { fontSize: 11, color: COLORS.textSub, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  balanceTrend: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  balanceVal: { fontSize: 36, fontWeight: '800', marginTop: 6, letterSpacing: -1 },
+  balanceSubChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: COLORS.bg3 },
+  balanceSubAmt: { fontSize: 13, fontWeight: '700' },
+  balanceSubLbl: { fontSize: 11, color: COLORS.textSub, fontWeight: '600' },
+
+  // ── Secciones ───────────────────────────────────────────────────────────────
   section: { paddingHorizontal: 16, paddingTop: 20 },
   sectionHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  sectionTitle: { fontSize: 15, fontWeight: '600', color: COLORS.text },
-  sectionLink: { fontSize: 13, color: COLORS.purpleLight },
-  habitRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 0.5, borderColor: COLORS.border },
+  sectionTitle: { fontSize: 15, fontWeight: '800', color: COLORS.text },
+  sectionLink: { fontSize: 13, color: COLORS.purple, fontWeight: '700' },
+
+  // ── Hábitos ─────────────────────────────────────────────────────────────────
+  habitRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 11, paddingHorizontal: 14,
+    marginBottom: 8, ...NEOM.card,
+  },
   habitIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   habitName: { fontSize: 14, color: COLORS.text, fontWeight: '500' },
   habitCat: { fontSize: 11, marginTop: 1 },
   statusDot: { width: 12, height: 12, borderRadius: 6 },
-  streakChip: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: '#F59E0B22', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8 },
-  streakText: { fontSize: 10, fontWeight: '800', color: '#F59E0B' },
-  balanceCard: { padding: 18 },
-  balanceLbl: { fontSize: 12, color: '#ffffffaa', fontWeight: '600', letterSpacing: 0.5 },
-  balanceVal: { fontSize: 34, fontWeight: '800', marginTop: 4, letterSpacing: -0.5 },
-  balanceSub: { fontSize: 12, color: '#ffffffcc', fontWeight: '500' },
-  weekChart: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', padding: 12, backgroundColor: COLORS.card, borderRadius: 16, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  streakChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 2,
+    backgroundColor: COLORS.amberDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 8,
+  },
+  streakText: { fontSize: 10, fontWeight: '800', color: COLORS.amber },
+
+  // ── Gráfica semanal ──────────────────────────────────────────────────────────
+  weekChart: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end',
+    padding: 14, ...NEOM.card,
+  },
   weekCol: { alignItems: 'center', flex: 1 },
   weekBarWrap: { height: 80, justifyContent: 'flex-end', marginBottom: 6 },
   weekBar: { width: 22, borderRadius: 6 },
   weekDay: { fontSize: 11, color: COLORS.textSub, marginBottom: 2 },
   weekPct: { fontSize: 10, fontWeight: '600' },
-  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 0.5, borderColor: COLORS.border },
+
+  // ── Metas ────────────────────────────────────────────────────────────────────
+  goalRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderColor: COLORS.border },
   goalIcon: { width: 32, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   goalName: { fontSize: 13, color: COLORS.text, fontWeight: '500' },
   goalPct: { fontSize: 13, fontWeight: '700' },
-  goalBarBg: { height: 4, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden' },
-  goalBarFill: { height: 4, borderRadius: 4 },
-  finGrid: { flexDirection: 'row', gap: 8 },
-  finCard: { flex: 1, backgroundColor: COLORS.card, borderRadius: 12, padding: 12, borderWidth: 0.5, borderColor: COLORS.cardBorder, borderLeftWidth: 3 },
-  finLabel: { fontSize: 11, color: COLORS.textSub, marginBottom: 4 },
-  finVal: { fontSize: 16, fontWeight: '700' },
-  fab: {
-    position: 'absolute', right: 20, bottom: 22, width: 56, height: 56, borderRadius: 28,
-    backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#7C3AED', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+  goalBarBg: { height: 5, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden' },
+  goalBarFill: { height: 5, borderRadius: 4 },
+
+  // ── Buscador ─────────────────────────────────────────────────────────────────
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    ...NEOM.pressed, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 10,
   },
-  qBackdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  qSheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 16, paddingBottom: 32 },
-  qTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, padding: 12 },
-  qItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13, paddingHorizontal: 12 },
-  qIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  qLabel: { flex: 1, fontSize: 15, color: COLORS.text, fontWeight: '500' },
-  catReportCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder, gap: 10 },
-  catRow: { gap: 4 },
+  searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 0 },
+  emptyHint: { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', paddingVertical: 12, textAlign: 'center' },
+
+  // ── Movimientos recientes ────────────────────────────────────────────────────
+  txList: { gap: 6 },
+  txRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingVertical: 11, paddingHorizontal: 14,
+    ...NEOM.card,
+  },
+  txTitle: { fontSize: 14, color: COLORS.text, fontWeight: '600' },
+  txSub: { fontSize: 11, color: COLORS.textSub, marginTop: 1 },
+  txAmt: { fontSize: 15, fontWeight: '800' },
+
+  // ── Reporte de categorías ─────────────────────────────────────────────────────
+  catReportCard: { ...NEOM.card, padding: 16, gap: 12 },
+  catRow: { gap: 5 },
   catHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   catDot: { width: 8, height: 8, borderRadius: 4 },
   catName: { flex: 1, fontSize: 13, color: COLORS.text, fontWeight: '500' },
@@ -400,12 +474,29 @@ const styles = StyleSheet.create({
   catAmt: { fontSize: 12, color: COLORS.textMuted, minWidth: 70, textAlign: 'right' },
   catBarBg: { height: 6, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden' },
   catBarFill: { height: 6, borderRadius: 4 },
-  searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, borderWidth: 0.5, borderColor: COLORS.cardBorder, marginBottom: 10 },
-  searchInput: { flex: 1, fontSize: 14, color: COLORS.text, paddingVertical: 0 },
-  emptyHint: { fontSize: 13, color: COLORS.textMuted, fontStyle: 'italic', paddingVertical: 12, textAlign: 'center' },
-  txList: { gap: 4 },
-  txRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderColor: COLORS.border },
-  txTitle: { fontSize: 13, color: COLORS.text, fontWeight: '500' },
-  txSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
-  txAmt: { fontSize: 14, fontWeight: '700' },
+
+  // ── FAB y quick-menu ─────────────────────────────────────────────────────────
+  fab: {
+    position: 'absolute', right: 20, bottom: 22, width: 56, height: 56, borderRadius: 28,
+    backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center',
+    shadowColor: COLORS.purple, shadowOpacity: 0.45, shadowRadius: 14,
+    shadowOffset: { width: 0, height: 6 }, elevation: 10,
+  },
+  qBackdrop: { flex: 1, backgroundColor: '#00000077', justifyContent: 'flex-end' },
+  qSheet: {
+    backgroundColor: COLORS.bg2, borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    padding: 16, paddingBottom: 34,
+    shadowColor: '#AEAAC8', shadowOpacity: 0.3, shadowRadius: 20,
+    shadowOffset: { width: 0, height: -6 }, elevation: 12,
+  },
+  qTitle: { fontSize: 16, fontWeight: '700', color: COLORS.text, padding: 12 },
+  qItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13, paddingHorizontal: 12 },
+  qIcon: { width: 42, height: 42, borderRadius: 13, alignItems: 'center', justifyContent: 'center' },
+  qLabel: { flex: 1, fontSize: 15, color: COLORS.text, fontWeight: '500' },
+
+  // ── Legacy (no se usan, mantenemos compatibilidad) ────────────────────────────
+  finGrid: { flexDirection: 'row', gap: 8 },
+  finCard: { flex: 1, ...NEOM.card, padding: 12, borderLeftWidth: 3 },
+  finLabel: { fontSize: 11, color: COLORS.textSub, marginBottom: 4 },
+  finVal: { fontSize: 16, fontWeight: '700' },
 });

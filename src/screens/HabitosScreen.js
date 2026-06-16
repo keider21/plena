@@ -2,12 +2,11 @@ import React, { useState } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Switch, Modal, TextInput
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { format, subDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
-import { COLORS, CAT_COLORS } from '../utils/theme';
+import { COLORS, NEOM, CAT_COLORS } from '../utils/theme';
 import { scheduleHabitReminder, cancelHabitReminder, sendTestNotification } from '../utils/notifications';
 import * as Haptics from 'expo-haptics';
 
@@ -272,16 +271,16 @@ export default function HabitosScreen() {
     <View style={{ flex: 1 }}>
     <ScrollView style={styles.bg} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-      <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.header}>
+      <View style={styles.header}>
         <Text style={styles.headerTitle}>Hábitos</Text>
         <Text style={styles.headerSub}>{format(new Date(), "EEEE d 'de' MMMM", { locale: es })}</Text>
         <View style={styles.progressWrap}>
           <View style={styles.progressBg}>
-            <LinearGradient colors={[COLORS.purple, COLORS.purpleLight]} style={[styles.progressFill, { width: `${pct}%` }]} />
+            <View style={[styles.progressFill, { width: `${pct}%` }]} />
           </View>
           <Text style={styles.progressText}>{todayDone}/{todayTotal} hoy · {pct}%</Text>
         </View>
-      </LinearGradient>
+      </View>
 
       <View style={styles.filterRow}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
@@ -352,18 +351,22 @@ export default function HabitosScreen() {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
   container: {},
-  header: { padding: 20, paddingTop: 56, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginBottom: 8 },
+  header: {
+    padding: 20, paddingTop: 56,
+    backgroundColor: COLORS.bg,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8,
+  },
   headerTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text },
   headerSub: { fontSize: 13, color: COLORS.textSub, marginTop: 2, marginBottom: 16 },
   progressWrap: { gap: 8 },
-  progressBg: { height: 6, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden' },
-  progressFill: { height: 6, borderRadius: 4 },
-  progressText: { fontSize: 12, color: COLORS.textSub },
+  progressBg: { height: 7, backgroundColor: COLORS.bg3, borderRadius: 4, overflow: 'hidden' },
+  progressFill: { height: 7, borderRadius: 4, backgroundColor: COLORS.purple },
+  progressText: { fontSize: 12, color: COLORS.textSub, fontWeight: '600' },
   filterRow: { paddingHorizontal: 16, marginBottom: 8 },
-  filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, backgroundColor: COLORS.card, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  filterChip: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 20, ...NEOM.chip },
   filterText: { fontSize: 12, color: COLORS.textSub, textTransform: 'capitalize' },
   list: { paddingHorizontal: 16, gap: 10 },
-  habitCard: { backgroundColor: COLORS.card, borderRadius: 14, padding: 14, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  habitCard: { ...NEOM.card, borderRadius: 14, padding: 14 },
   habitTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   hIcon: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   hName: { fontSize: 14, fontWeight: '600', color: COLORS.text },
@@ -372,10 +375,10 @@ const styles = StyleSheet.create({
   streakBadge: { flexDirection: 'row', alignItems: 'center', gap: 2, backgroundColor: COLORS.amberDim, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 20 },
   streakText: { fontSize: 10, color: COLORS.amber, fontWeight: '700' },
   hActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  logBtn: { width: 30, height: 30, borderRadius: 10, backgroundColor: COLORS.bg3, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: COLORS.cardBorder },
-  expandedArea: { marginTop: 14, paddingTop: 14, borderTopWidth: 0.5, borderColor: COLORS.border },
+  logBtn: { width: 30, height: 30, borderRadius: 10, backgroundColor: COLORS.bg3, alignItems: 'center', justifyContent: 'center' },
+  expandedArea: { marginTop: 14, paddingTop: 14, borderTopWidth: 1, borderColor: COLORS.border },
   statsRow: { flexDirection: 'row', gap: 8, marginBottom: 14 },
-  miniStat: { flex: 1, backgroundColor: COLORS.bg3, borderRadius: 10, padding: 10, alignItems: 'center' },
+  miniStat: { flex: 1, ...NEOM.pressed, padding: 10, alignItems: 'center' },
   miniStatVal: { fontSize: 18, fontWeight: '700' },
   miniStatLbl: { fontSize: 10, color: COLORS.textMuted, marginTop: 2 },
   chartLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 6 },
@@ -389,8 +392,8 @@ const styles = StyleSheet.create({
   testBtnText: { fontSize: 11, color: COLORS.purpleLight, fontWeight: '600' },
   emptyHint: { fontSize: 13, color: COLORS.textMuted, textAlign: 'center', paddingHorizontal: 32, marginTop: 20, lineHeight: 19 },
   fab: { position: 'absolute', right: 20, bottom: 24, width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center', shadowColor: '#7C3AED', shadowOpacity: 0.4, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 8 },
-  backdrop: { flex: 1, backgroundColor: '#000000AA', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 20, paddingBottom: 32 },
+  backdrop: { flex: 1, backgroundColor: '#00000077', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: COLORS.bg2, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 20, paddingBottom: 32 },
   sheetHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   sheetTitle: { fontSize: 17, fontWeight: '700', color: COLORS.text },
   sheetSub: { fontSize: 13, color: COLORS.textSub, marginTop: 12, marginBottom: 8 },

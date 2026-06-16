@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, NativeModules,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
 import { COLORS } from '../utils/theme';
-import { WEEKDAYS, PREFERENCES, placementsByDay } from '../utils/timeOrganizer';
-import { rescheduleAll } from '../utils/notifications';
+import { WEEKDAYS, PREFERENCES } from '../utils/timeOrganizer';
+import { reschedulePlan, notifyScheduleChange, sendTestNotification, requestIgnoreBattery, requestExactAlarm, openAppNotifSettings } from '../utils/notifications';
+import * as Notifications from 'expo-notifications';
 import TimePickerField from '../components/TimePickerField';
 import Dropdown from '../components/Dropdown';
 
@@ -95,8 +96,13 @@ export default function PlanningWizard({ navigation }) {
   const handleSave = async () => {
     await savePlanning({ schedule, activities });
     try {
-      const habits = useStore.getState().habits;
-      await rescheduleAll({ habits, schedule, activities, placementsByDay: placementsByDay(schedule, activities) });
+      const { planning, habits } = useStore.getState();
+      // Reprograma usando el estado ya guardado (incluye cambios manuales por día)
+      await reschedulePlan(planning, habits);
+      const activeNames = activities
+        .filter((a) => a.enabled || a.custom || PRIMARY.includes(a.id))
+        .map((a) => a.name);
+      await notifyScheduleChange(activeNames);
     } catch (e) { /* noop */ }
     navigation.goBack();
   };
@@ -251,6 +257,75 @@ export default function PlanningWizard({ navigation }) {
             <TouchableOpacity style={styles.addIconBtn} onPress={addActivity} activeOpacity={0.8}><Ionicons name="add" size={22} color="#fff" /></TouchableOpacity>
           </View>
         </View>
+
+        <TouchableOpacity
+          style={[styles.saveBtn, { backgroundColor: '#10B981', marginBottom: 10 }]}
+          onPress={async () => {
+            const fsn = NativeModules.FullScreenNotif;
+            if (!fsn) { Alert.alert('Solo Android nativo'); return; }
+
+            // Verificar los 4 permisos necesarios para el popup en segundo plano
+            const [hasNotif, canExact, canFSI, ignoringBattery] = await Promise.all([
+              fsn.hasNotifPermission(),
+              fsn.canScheduleExact(),
+              fsn.canUseFullScreenIntent ? fsn.canUseFullScreenIntent() : Promise.resolve(true),
+              fsn.isBatteryOptimizationIgnored ? fsn.isBatteryOptimizationIgnored() : Promise.resolve(true),
+            ]);
+
+            // 1. Notificaciones — crítico
+            if (!hasNotif) {
+              Alert.alert('❌ Notificaciones bloqueadas',
+                'Sin este permiso los popups nunca aparecerán.\n\nVe a: Ajustes → Apps → Vida Plena → Notificaciones → Activar.',
+                [{ text: 'Abrir ajustes', onPress: openAppNotifSettings }, { text: 'Cancelar' }]);
+              return;
+            }
+
+            // 2. Popup a pantalla completa (Android 14+) — crítico si no está concedido
+            if (!canFSI) {
+              Alert.alert('❌ Popup en pantalla bloqueado (Android 14)',
+                'Android 14 requiere que actives manualmente "Notificaciones a pantalla completa".\n\nSIN ESTO el popup NO aparece cuando la app está cerrada.\n\nVe a: Ajustes → Apps → Acceso especial → Notificaciones a pantalla completa → Vida Plena → Permitir.',
+                [
+                  { text: 'Abrir ajustes ahora', onPress: () => fsn.openFullScreenIntentSettings && fsn.openFullScreenIntentSettings() },
+                  { text: 'Cancelar' },
+                ]);
+              return;
+            }
+
+            // 3. Alarmas exactas — advertencia no bloqueante
+            if (!canExact) {
+              Alert.alert('⚠️ Alarmas exactas desactivadas',
+                'Las notificaciones pueden llegar tarde o no llegar en segundo plano.\n\nVe a: Ajustes → Apps → Acceso especial → Alarmas y recordatorios → Vida Plena → Permitir.',
+                [{ text: 'Abrir ajustes', onPress: requestExactAlarm }, { text: 'Continuar' }]);
+            }
+
+            // 4. Optimización de batería — advertencia no bloqueante
+            if (!ignoringBattery) {
+              Alert.alert('⚠️ Optimización de batería activa',
+                'Android puede pausar o cancelar las alarmas para ahorrar energía.\n\nVe a: Ajustes → Batería → Optimización de batería → Vida Plena → No optimizar.',
+                [{ text: 'Desactivar ahora', onPress: requestIgnoreBattery }, { text: 'Continuar' }]);
+            }
+
+            // Si todos los permisos críticos están OK, disparar la prueba
+            try {
+              await fsn.fireNow(
+                'test_fsn',
+                '🔔 Prueba Vida Plena',
+                'Si ves este popup fuera de la app, ¡todo funciona!',
+                JSON.stringify({ type: 'activity', id: 'test', name: 'Prueba', notifId: 'test_fsn' })
+              );
+              Alert.alert('✅ Enviado — minimiza la app',
+                canFSI && ignoringBattery
+                  ? 'El popup debería aparecer encima de todo.\n\nSi no aparece, revisa que la optimización de batería esté desactivada para Vida Plena.'
+                  : 'Concede todos los permisos primero para el mejor resultado.');
+            } catch (e) {
+              Alert.alert('Error al enviar', e.message);
+            }
+          }}
+          activeOpacity={0.85}
+        >
+          <Ionicons name="notifications-outline" size={20} color="#fff" />
+          <Text style={styles.saveText}>Probar popup ahora</Text>
+        </TouchableOpacity>
 
         <TouchableOpacity style={styles.saveBtn} onPress={handleSave} activeOpacity={0.85}>
           <Ionicons name="checkmark-circle" size={20} color="#fff" />

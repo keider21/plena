@@ -21,6 +21,11 @@ npm-debug.*
 .env
 .env.local
 
+# signing keys — NUNCA subir a GitHub
+*.jks
+*.keystore
+!debug.keystore
+
 # IDE
 .idea/
 .vscode/

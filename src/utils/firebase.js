@@ -40,6 +40,7 @@ export async function firebaseLogin(email, password) {
 
 export async function firebaseLogout() {
   try {
+    try { await GoogleSignin.signOut(); } catch (_) {}
     await signOut(auth);
     return { error: null };
   } catch (e) {
@@ -51,8 +52,7 @@ export async function firebaseLogout() {
 export async function initializeGoogleSignIn() {
   try {
     GoogleSignin.configure({
-      webClientId: '171553208129-splf077phv9ba5o7nkvkagtj3dlks7aj.apps.googleusercontent.com',
-      androidClientId: '171553208129-splf077phv9ba5o7nkvkagtj3dlks7aj.apps.googleusercontent.com',
+      webClientId: '155946404852-9k81ndpo3m2afg119fqkl3fn8b724qae.apps.googleusercontent.com',
     });
   } catch (e) {
     console.log('GoogleSignin init error:', e);
@@ -62,8 +62,12 @@ export async function initializeGoogleSignIn() {
 export async function firebaseLoginGoogle() {
   try {
     await GoogleSignin.hasPlayServices();
+    try { await GoogleSignin.signOut(); } catch (_) {}
     const userInfo = await GoogleSignin.signIn();
-    const credential = GoogleAuthProvider.credential(userInfo.idToken);
+    if (userInfo.type !== 'success') {
+      return { user: null, error: 'Google Sign-In cancelado' };
+    }
+    const credential = GoogleAuthProvider.credential(userInfo.data.idToken);
     const userCred = await signInWithCredential(auth, credential);
     return { user: userCred.user, error: null };
   } catch (e) {

@@ -3,10 +3,9 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, Alert
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useStore } from '../store/useStore';
-import { COLORS } from '../utils/theme';
+import { COLORS, NEOM } from '../utils/theme';
 import { firebaseLoginGoogle } from '../utils/firebase';
 
 export default function AuthScreen() {
@@ -16,7 +15,8 @@ export default function AuthScreen() {
   const [password, setPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login, register, syncAllToFirebase } = useStore();
+  const store = useStore();
+  const { login, register } = store;
 
   const handleSubmit = async () => {
     if (!email || !password) return Alert.alert('Completa los campos');
@@ -37,137 +37,153 @@ export default function AuthScreen() {
       setLoading(false);
       return;
     }
-    const appUser = { id: user.uid, name: user.displayName || 'Usuario', email: user.email, passwordHash: 'google-' + user.uid, createdAt: new Date().toISOString().slice(0, 10) };
-    await register(appUser.name, appUser.email, 'google-' + user.uid);
-    await syncAllToFirebase(user.uid);
+    const googlePass = 'google-' + user.uid;
+    // Intenta login primero (usuario ya registrado), si falla registra
+    let result = await login(user.email, googlePass);
+    if (result.error) {
+      result = await register(user.displayName || 'Usuario', user.email, googlePass);
+    }
+    if (result?.error) {
+      Alert.alert('Error', result.error);
+      setLoading(false);
+      return;
+    }
+    // Restaurar todos los datos desde Firebase (si el usuario los tenía guardados)
+    await store.syncFromFirebase(user.uid);
     setLoading(false);
   };
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <LinearGradient colors={['#0A0A0F', '#0D0D1A', '#12102A']} style={styles.bg}>
-        <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: COLORS.bg }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView style={styles.bg} contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
 
-          <View style={styles.logoArea}>
-            <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.logoCircle}>
-              <Ionicons name="star" size={32} color="#fff" />
-            </LinearGradient>
-            <Text style={styles.appName}>Vida Plena</Text>
-            <Text style={styles.appSub}>Tu guía de crecimiento personal</Text>
+        <View style={styles.logoArea}>
+          <View style={styles.logoCircle}>
+            <Ionicons name="star" size={32} color="#fff" />
           </View>
+          <Text style={styles.appName}>Vida Plena</Text>
+          <Text style={styles.appSub}>Tu guía de crecimiento personal</Text>
+        </View>
 
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>{mode === 'login' ? 'Bienvenido de vuelta' : 'Crear cuenta'}</Text>
-            <Text style={styles.cardSub}>{mode === 'login' ? 'Ingresa a tu espacio personal' : 'Empieza tu transformación hoy'}</Text>
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>{mode === 'login' ? 'Bienvenido de vuelta' : 'Crear cuenta'}</Text>
+          <Text style={styles.cardSub}>{mode === 'login' ? 'Ingresa a tu espacio personal' : 'Empieza tu transformación hoy'}</Text>
 
-            {mode === 'register' && (
-              <View style={styles.inputWrap}>
-                <Ionicons name="person-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
-                <TextInput
-                  placeholder="Tu nombre"
-                  placeholderTextColor={COLORS.textMuted}
-                  style={styles.input}
-                  value={name}
-                  onChangeText={setName}
-                  autoCapitalize="words"
-                />
-              </View>
-            )}
-
+          {mode === 'register' && (
             <View style={styles.inputWrap}>
-              <Ionicons name="mail-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
+              <Ionicons name="person-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
               <TextInput
-                placeholder="Correo electrónico"
+                placeholder="Tu nombre"
                 placeholderTextColor={COLORS.textMuted}
                 style={styles.input}
-                value={email}
-                onChangeText={setEmail}
-                keyboardType="email-address"
-                autoCapitalize="none"
+                value={name}
+                onChangeText={setName}
+                autoCapitalize="words"
               />
             </View>
+          )}
 
-            <View style={styles.inputWrap}>
-              <Ionicons name="lock-closed-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
-              <TextInput
-                placeholder="Contraseña"
-                placeholderTextColor={COLORS.textMuted}
-                style={[styles.input, { flex: 1 }]}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry={!showPass}
-              />
-              <TouchableOpacity onPress={() => setShowPass(!showPass)} style={{ padding: 4 }}>
-                <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.textMuted} />
-              </TouchableOpacity>
-            </View>
+          <View style={styles.inputWrap}>
+            <Ionicons name="mail-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
+            <TextInput
+              placeholder="Correo electrónico"
+              placeholderTextColor={COLORS.textMuted}
+              style={styles.input}
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+          </View>
 
-            <TouchableOpacity onPress={handleSubmit} activeOpacity={0.8} style={{ marginTop: 8 }}>
-              <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.btn}>
-                {loading
-                  ? <Text style={styles.btnText}>Cargando...</Text>
-                  : <Text style={styles.btnText}>{mode === 'login' ? 'Entrar' : 'Crear mi cuenta'}</Text>
-                }
-              </LinearGradient>
+          <View style={styles.inputWrap}>
+            <Ionicons name="lock-closed-outline" size={18} color={COLORS.textMuted} style={styles.inputIcon} />
+            <TextInput
+              placeholder="Contraseña"
+              placeholderTextColor={COLORS.textMuted}
+              style={[styles.input, { flex: 1 }]}
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPass}
+            />
+            <TouchableOpacity onPress={() => setShowPass(!showPass)} style={{ padding: 4 }}>
+              <Ionicons name={showPass ? 'eye-off-outline' : 'eye-outline'} size={18} color={COLORS.textMuted} />
             </TouchableOpacity>
+          </View>
 
-            <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'register' : 'login')} style={styles.switchRow}>
-              <Text style={styles.switchText}>
-                {mode === 'login' ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
-                <Text style={{ color: COLORS.purpleLight, fontWeight: '600' }}>
-                  {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}
-                </Text>
+          <TouchableOpacity onPress={handleSubmit} activeOpacity={0.85} style={[styles.btn, { marginTop: 8 }]}>
+            <Text style={styles.btnText}>{loading ? 'Cargando...' : (mode === 'login' ? 'Entrar' : 'Crear mi cuenta')}</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity onPress={() => setMode(mode === 'login' ? 'register' : 'login')} style={styles.switchRow}>
+            <Text style={styles.switchText}>
+              {mode === 'login' ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+              <Text style={{ color: COLORS.purple, fontWeight: '600' }}>
+                {mode === 'login' ? 'Regístrate' : 'Inicia sesión'}
               </Text>
-            </TouchableOpacity>
+            </Text>
+          </TouchableOpacity>
 
-            <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>O continúa con</Text>
-              <View style={styles.dividerLine} />
-            </View>
-
-            <TouchableOpacity onPress={handleGoogleLogin} activeOpacity={0.8} style={styles.googleBtn} disabled={loading}>
-              <Ionicons name="logo-google" size={20} color={COLORS.text} />
-              <Text style={styles.googleText}>Google</Text>
-            </TouchableOpacity>
+          <View style={styles.divider}>
+            <View style={styles.dividerLine} />
+            <Text style={styles.dividerText}>O continúa con</Text>
+            <View style={styles.dividerLine} />
           </View>
 
-          <View style={styles.features}>
-            {[
-              { icon: 'trending-up-outline', text: 'Seguimiento de hábitos diarios' },
-              { icon: 'bar-chart-outline', text: 'Gráficas de progreso real' },
-              { icon: 'notifications-outline', text: 'Recordatorios personalizados' },
-              { icon: 'wallet-outline', text: 'Control financiero completo' },
-            ].map((f, i) => (
-              <View key={i} style={styles.featureRow}>
-                <View style={styles.featureIcon}>
-                  <Ionicons name={f.icon} size={16} color={COLORS.purpleLight} />
-                </View>
-                <Text style={styles.featureText}>{f.text}</Text>
+          <TouchableOpacity onPress={handleGoogleLogin} activeOpacity={0.8} style={styles.googleBtn} disabled={loading}>
+            <Ionicons name="logo-google" size={20} color={COLORS.text} />
+            <Text style={styles.googleText}>Google</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.features}>
+          {[
+            { icon: 'trending-up-outline', text: 'Seguimiento de hábitos diarios' },
+            { icon: 'bar-chart-outline', text: 'Gráficas de progreso real' },
+            { icon: 'notifications-outline', text: 'Recordatorios personalizados' },
+            { icon: 'wallet-outline', text: 'Control financiero completo' },
+          ].map((f, i) => (
+            <View key={i} style={styles.featureRow}>
+              <View style={styles.featureIcon}>
+                <Ionicons name={f.icon} size={16} color={COLORS.purple} />
               </View>
-            ))}
-          </View>
+              <Text style={styles.featureText}>{f.text}</Text>
+            </View>
+          ))}
+        </View>
 
-        </ScrollView>
-      </LinearGradient>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
+  bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { padding: 24, paddingTop: 60 },
   logoArea: { alignItems: 'center', marginBottom: 32 },
-  logoCircle: { width: 72, height: 72, borderRadius: 24, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  logoCircle: {
+    width: 72, height: 72, borderRadius: 24,
+    alignItems: 'center', justifyContent: 'center',
+    ...NEOM.float,
+    backgroundColor: COLORS.purple, marginBottom: 16,
+  },
   appName: { fontSize: 28, fontWeight: '800', color: COLORS.text, letterSpacing: -0.5 },
   appSub: { fontSize: 14, color: COLORS.textSub, marginTop: 4 },
-  card: { backgroundColor: COLORS.card, borderRadius: 20, padding: 20, borderWidth: 0.5, borderColor: COLORS.cardBorder, marginBottom: 24 },
+  card: { ...NEOM.float, padding: 22, marginBottom: 24 },
   cardTitle: { fontSize: 20, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
   cardSub: { fontSize: 13, color: COLORS.textSub, marginBottom: 20 },
-  inputWrap: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bg3, borderRadius: 12, paddingHorizontal: 14, marginBottom: 12, borderWidth: 0.5, borderColor: COLORS.border },
+  inputWrap: {
+    flexDirection: 'row', alignItems: 'center',
+    ...NEOM.pressed, paddingHorizontal: 14, marginBottom: 12,
+  },
   inputIcon: { marginRight: 10 },
   input: { flex: 1, height: 48, color: COLORS.text, fontSize: 15 },
-  btn: { borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
+  btn: {
+    backgroundColor: COLORS.purple, borderRadius: 14, paddingVertical: 15,
+    alignItems: 'center',
+    shadowColor: COLORS.purple, shadowOpacity: 0.4, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 }, elevation: 6,
+  },
   btnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   switchRow: { marginTop: 16, alignItems: 'center' },
   switchText: { fontSize: 14, color: COLORS.textSub },
@@ -178,6 +194,6 @@ const styles = StyleSheet.create({
   divider: { flexDirection: 'row', alignItems: 'center', marginVertical: 20, gap: 10 },
   dividerLine: { flex: 1, height: 1, backgroundColor: COLORS.border },
   dividerText: { fontSize: 12, color: COLORS.textMuted },
-  googleBtn: { flexDirection: 'row', backgroundColor: COLORS.bg2, borderRadius: 12, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 0.5, borderColor: COLORS.border },
+  googleBtn: { flexDirection: 'row', ...NEOM.card, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 10 },
   googleText: { color: COLORS.text, fontWeight: '600', fontSize: 15 },
 });

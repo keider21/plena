@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Share } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../utils/theme';
 import { clearLastCrash } from '../utils/crashReporter';
@@ -18,7 +17,7 @@ export default function CrashScreen({ crash, onContinue }) {
   const dismiss = async () => { await clearLastCrash(); onContinue(); };
 
   return (
-    <LinearGradient colors={['#1A0A0F', '#0D0D1A']} style={styles.bg}>
+    <View style={styles.bg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.iconWrap}>
           <Ionicons name="bug" size={48} color={COLORS.red} />
@@ -55,12 +54,12 @@ export default function CrashScreen({ crash, onContinue }) {
 
         <View style={{ height: 30 }} />
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
+  bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { padding: 24, paddingTop: 64, paddingBottom: 40 },
   iconWrap: { alignItems: 'center', marginBottom: 16 },
   title: { fontSize: 22, fontWeight: '800', color: COLORS.text, textAlign: 'center' },

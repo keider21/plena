@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
@@ -89,7 +88,7 @@ export default function HabitsOnboardingScreen({ navigation }) {
   const pool = SUGGESTIONS[area] || [];
 
   return (
-    <LinearGradient colors={['#0A0A0F', '#0D0D1A', '#12102A']} style={styles.bg}>
+    <View style={styles.bg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.header}>
           <TouchableOpacity onPress={back} style={styles.backBtn}><Ionicons name="arrow-back" size={20} color={COLORS.textSub} /><Text style={styles.backText}>Atrás</Text></TouchableOpacity>
@@ -155,23 +154,21 @@ export default function HabitsOnboardingScreen({ navigation }) {
           </View>
         )}
 
-        <TouchableOpacity onPress={advance} disabled={(step === 0 && !area) || (step === 1 && !time) || (step === 2 && selected.length === 0)} style={({ pressed }) => [styles.nextBtn, ((step === 0 && !area) || (step === 1 && !time) || (step === 2 && selected.length === 0)) && { opacity: 0.4 }]}>
-          <LinearGradient colors={['#7C3AED', '#6D28D9']} style={styles.nextBtnBg}>
-            <Text style={styles.nextBtnText}>{step < STEP_COUNT - 1 ? 'Siguiente' : `Crear ${selected.length} hábito${selected.length !== 1 ? 's' : ''}`}</Text>
-            <Ionicons name={step < STEP_COUNT - 1 ? 'arrow-forward' : 'checkmark-circle'} size={18} color="#fff" style={{ marginLeft: 8 }} />
-          </LinearGradient>
+        <TouchableOpacity onPress={advance} disabled={(step === 0 && !area) || (step === 1 && !time) || (step === 2 && selected.length === 0)} style={[styles.nextBtn, ((step === 0 && !area) || (step === 1 && !time) || (step === 2 && selected.length === 0)) && { opacity: 0.4 }]}>
+          <Text style={styles.nextBtnText}>{step < STEP_COUNT - 1 ? 'Siguiente' : `Crear ${selected.length} hábito${selected.length !== 1 ? 's' : ''}`}</Text>
+          <Ionicons name={step < STEP_COUNT - 1 ? 'arrow-forward' : 'checkmark-circle'} size={18} color="#fff" style={{ marginLeft: 8 }} />
         </TouchableOpacity>
 
         {step === 0 && <TouchableOpacity onPress={() => navigation.goBack()} style={styles.skip}><Text style={styles.skipText}>Omitir por ahora</Text></TouchableOpacity>}
 
         <View style={{ height: 30 }} />
       </ScrollView>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  bg: { flex: 1 },
+  bg: { flex: 1, backgroundColor: COLORS.bg },
   container: { padding: 24, paddingTop: 56, paddingBottom: 40 },
   header: { marginBottom: 24 },
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, marginLeft: -8, marginBottom: 12 },
@@ -195,8 +192,7 @@ const styles = StyleSheet.create({
   suggName: { fontSize: 15, color: COLORS.text, fontWeight: '600' },
   suggTime: { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
   selCount: { textAlign: 'center', fontSize: 13, color: COLORS.purpleLight, fontWeight: '700', marginTop: 16 },
-  nextBtn: { borderRadius: 14, marginTop: 24 },
-  nextBtnBg: { paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 14 },
+  nextBtn: { backgroundColor: COLORS.purple, borderRadius: 14, marginTop: 24, paddingVertical: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', shadowColor: COLORS.purple, shadowOpacity: 0.4, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6 },
   nextBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   skip: { alignItems: 'center', paddingVertical: 12, marginTop: 8 },
   skipText: { color: COLORS.textMuted, fontSize: 13 },

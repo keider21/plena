@@ -189,7 +189,7 @@ export function suggestPlacements(schedule, weekday, activities) {
 // Un "hueco" es un espacio libre menor a gapThreshold minutos (difícil de aprovechar).
 // freeReal = tiempo libre REAL (no incluye lo ya asignado a actividades ni los huecos).
 function assembleDay(schedule, weekday, placedActivities, gapThreshold = 30) {
-  if (!schedule) return { segments: [], freeReal: 0, holesCount: 0, holesMin: 0 };
+  if (!schedule) return { segments: [], freeReal: 0, holesCount: 0, holesMin: 0, overlapping: [] };
 
   const wake = toMin(schedule.wakeTime);
   let sleep = toMin(schedule.sleepTime);
@@ -209,9 +209,10 @@ function assembleDay(schedule, weekday, placedActivities, gapThreshold = 30) {
   const occ = [...busy, ...placed].sort((a, b) => a.start - b.start);
 
   const segments = [];
+  const overlapping = [];
   let cursor = wake;
   for (const o of occ) {
-    if (o.end <= cursor) continue;
+    if (o.end <= cursor) { overlapping.push(o); continue; }
     if (o.start > cursor) {
       const dur = Math.min(o.start, sleep) - cursor;
       if (dur > 0) segments.push({ start: cursor, end: cursor + dur, duration: dur, type: 'hole', label: 'Hueco' });
@@ -229,7 +230,7 @@ function assembleDay(schedule, weekday, placedActivities, gapThreshold = 30) {
 
   const freeReal = segments.filter((s) => s.type === 'free').reduce((a, s) => a + s.duration, 0);
   const holes = segments.filter((s) => s.type === 'hole');
-  return { segments, freeReal, holesCount: holes.length, holesMin: holes.reduce((a, s) => a + s.duration, 0) };
+  return { segments, freeReal, holesCount: holes.length, holesMin: holes.reduce((a, s) => a + s.duration, 0), overlapping };
 }
 
 // Tabla del día desde la PLANTILLA (auto-organiza las actividades)
@@ -244,10 +245,13 @@ export function buildDayTable(schedule, weekday, activities, gapThreshold = 30) 
 export function buildDayWith(schedule, weekday, instances, gapThreshold = 30) {
   // Primero, overrides de bloques fijos SOLO para hoy (desayuno, cena, trabajo, etc.)
   const overrides = (instances || []).filter((it) => it.kind === 'fixedOverride');
-  const activityInstances = (instances || []).filter((it) => it.kind !== 'fixedOverride');
+  const sleepOvr = (instances || []).find((it) => it.kind === 'sleepOverride');
+  const activityInstances = (instances || []).filter((it) => it.kind !== 'fixedOverride' && it.kind !== 'sleepOverride');
+  // Si el usuario cambió las horas de sueño solo para hoy, usar esas
+  const sch = sleepOvr ? { ...schedule, wakeTime: sleepOvr.wakeTime, sleepTime: sleepOvr.sleepTime } : schedule;
 
   // Bloques originales (plantilla) para ese día
-  const busyOriginal = getBusyBlocks(schedule, weekday);
+  const busyOriginal = getBusyBlocks(sch, weekday);
   // Quitamos los bloques que tengan override y los reemplazamos por los del override
   const busy = busyOriginal
     .filter((b) => !overrides.some((o) => o.type === (b.type === 'work' ? 'fixed' : b.type === 'meal' ? 'fixed' : b.type === 'nap' ? 'fixed' : b.type)))
@@ -281,12 +285,12 @@ export function buildDayWith(schedule, weekday, instances, gapThreshold = 30) {
       type: 'activity', activityId: it.activityId || it.id, instanceId: it.id,
     })),
   ];
-  return assembleDayWith(schedule, weekday, busy, placed, gapThreshold);
+  return assembleDayWith(sch, weekday, busy, placed, gapThreshold);
 }
 
 // Variante que recibe los busy blocks ya calculados (porque pueden venir de overrides)
 function assembleDayWith(schedule, weekday, busy, placedActivities, gapThreshold = 30) {
-  if (!schedule) return { segments: [], freeReal: 0, holesCount: 0, holesMin: 0 };
+  if (!schedule) return { segments: [], freeReal: 0, holesCount: 0, holesMin: 0, overlapping: [] };
   const wake = toMin(schedule.wakeTime);
   let sleep = toMin(schedule.sleepTime);
   if (sleep <= wake) sleep += 1440;
@@ -305,9 +309,10 @@ function assembleDayWith(schedule, weekday, busy, placedActivities, gapThreshold
   const occ = [...busyN, ...placed].sort((a, b) => a.start - b.start);
 
   const segments = [];
+  const overlapping = [];
   let cursor = wake;
   for (const o of occ) {
-    if (o.end <= cursor) continue;
+    if (o.end <= cursor) { overlapping.push(o); continue; }
     if (o.start > cursor) {
       const dur = Math.min(o.start, sleep) - cursor;
       if (dur > 0) segments.push({ start: cursor, end: cursor + dur, duration: dur, type: 'hole', label: 'Hueco' });
@@ -323,7 +328,7 @@ function assembleDayWith(schedule, weekday, busy, placedActivities, gapThreshold
     segments.push({ start: cursor, end: sleep, duration: dur, type: 'hole', label: 'Hueco' });
   }
   const holes = segments.filter((s) => s.type === 'hole');
-  return { segments, freeReal: 0, holesCount: holes.length, holesMin: holes.reduce((a, s) => a + s.duration, 0) };
+  return { segments, freeReal: 0, holesCount: holes.length, holesMin: holes.reduce((a, s) => a + s.duration, 0), overlapping };
 }
 
 // Convierte la plantilla de un día en instancias editables (snapshot)
@@ -348,6 +353,27 @@ export function placementsByDay(schedule, activities) {
       .map((p) => ({ activityId: p.activityId, name: p.name, start: p.start }));
   }
   return out;
+}
+
+// Horas concretas de actividades a notificar para UNA fecha específica.
+// Si el usuario fijó instancias para ese día (dayPlans), usa esas horas exactas;
+// si no, cae a la plantilla. Respeta el override de sueño del día si existe.
+// Devuelve [{ activityId, name, start }] con start en minutos desde medianoche.
+export function activityTimesForDate(schedule, weekday, activities, dayInstances) {
+  const acts = (dayInstances || []).filter(
+    (it) => it.activityId && it.kind !== 'fixedOverride' && it.kind !== 'sleepOverride'
+  );
+  if (acts.length > 0) {
+    return acts
+      .map((it) => ({ activityId: it.activityId, name: it.name, start: toMin(it.start) }))
+      .filter((p) => Number.isFinite(p.start));
+  }
+  // Sin instancias de actividad para el día → plantilla (aplicando override de sueño si lo hay)
+  const sleepOvr = (dayInstances || []).find((it) => it.kind === 'sleepOverride');
+  const sch = sleepOvr ? { ...schedule, wakeTime: sleepOvr.wakeTime, sleepTime: sleepOvr.sleepTime } : schedule;
+  return suggestPlacements(sch, weekday, activities)
+    .filter((p) => p.placed)
+    .map((p) => ({ activityId: p.activityId, name: p.name, start: p.start }));
 }
 
 // Construye la línea de tiempo ordenada del día (ocupados + actividades sugeridas)

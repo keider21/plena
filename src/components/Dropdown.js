@@ -27,11 +27,22 @@ export default function Dropdown({ options, value, onChange, placeholder = 'Sele
                 const k = o.key ?? o;
                 const label = o.label ?? o;
                 const isSel = k === value;
+                if (o.isChild) {
+                  return (
+                    <TouchableOpacity key={String(k)} style={[styles.rowChild, isSel && styles.rowSel]} onPress={() => { onChange(k); setOpen(false); }}>
+                      <View style={styles.childLine} />
+                      {o.color ? <View style={[styles.dot, { backgroundColor: o.color + 'AA' }]} /> : null}
+                      <Text style={[styles.rowTextChild, isSel && styles.rowTextSel]}>{label}</Text>
+                      {isSel && <Ionicons name="checkmark" size={16} color={COLORS.purpleLight} />}
+                    </TouchableOpacity>
+                  );
+                }
                 return (
                   <TouchableOpacity key={String(k)} style={[styles.row, isSel && styles.rowSel]} onPress={() => { onChange(k); setOpen(false); }}>
                     {o.color ? <View style={[styles.dot, { backgroundColor: o.color }]} /> : null}
                     {o.icon ? <Ionicons name={o.icon} size={18} color={o.color || COLORS.textSub} /> : null}
                     <Text style={[styles.rowText, isSel && styles.rowTextSel]}>{label}</Text>
+                    {o.hasChildren && <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />}
                     {isSel && <Ionicons name="checkmark" size={18} color={COLORS.purpleLight} />}
                   </TouchableOpacity>
                 );
@@ -55,4 +66,7 @@ const styles = StyleSheet.create({
   rowSel: { backgroundColor: COLORS.purpleDim },
   rowText: { flex: 1, fontSize: 15, color: COLORS.text },
   rowTextSel: { color: COLORS.purpleLight, fontWeight: '700' },
+  rowChild: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 11, paddingHorizontal: 12, paddingLeft: 24, borderRadius: 10 },
+  rowTextChild: { flex: 1, fontSize: 14, color: COLORS.textSub },
+  childLine: { width: 2, height: 18, backgroundColor: COLORS.cardBorder, borderRadius: 1, marginRight: 2 },
 });

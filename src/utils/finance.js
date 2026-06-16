@@ -95,7 +95,12 @@ export function financeStats(transactions, period, ref = new Date()) {
     const c = t.category || 'Otros';
     byCategory[c] = (byCategory[c] || 0) + t.amount;
   });
-  return { ingresos, gastos, balance: ingresos - gastos, ahorro: Math.max(0, ingresos - gastos), byCategory, count: inRange.length };
+  const byIncome = {};
+  inRange.filter((t) => t.type === 'ingreso').forEach((t) => {
+    const c = t.category || 'Otros';
+    byIncome[c] = (byIncome[c] || 0) + t.amount;
+  });
+  return { ingresos, gastos, balance: ingresos - gastos, ahorro: Math.max(0, ingresos - gastos), byCategory, byIncome, count: inRange.length };
 }
 
 export function loanPending(loan) {
@@ -126,31 +131,114 @@ export function loanBreakdown(loan) {
   };
 }
 
-// Ocupación → categoría de ingreso propia (estadísticas más reales)
-export const OCCUPATIONS = [
-  { key: 'taxista', label: 'Taxista', income: 'Ingresos por taxi' },
-  { key: 'comerciante', label: 'Comerciante', income: 'Ventas del negocio' },
-  { key: 'empleado', label: 'Empleado', income: 'Sueldo' },
-  { key: 'independiente', label: 'Independiente', income: 'Ingresos independientes' },
-  { key: 'estudiante', label: 'Estudiante', income: 'Otros' },
-  { key: 'otro', label: 'Otro', income: 'Otros' },
-];
-export const occupationIncome = (key) => (OCCUPATIONS.find((o) => o.key === key) || {}).income || null;
-export function incomeCategories(occupationKey) {
-  const inc = occupationIncome(occupationKey);
-  if (inc && !CATEGORIES.ingreso.includes(inc)) return [inc, ...CATEGORIES.ingreso];
-  return CATEGORIES.ingreso;
+// Costo total e interés total de un préstamo con cuotas fijas.
+export function loanTotalCost(loan) {
+  const installment = loan.installment || 0;
+  const total = loan.installmentsTotal || 0;
+  if (installment > 0 && total > 0) {
+    const totalCost = installment * total;
+    const capital = loan.amount || 0;
+    return { totalCost, capital, interestTotal: Math.max(0, totalCost - capital) };
+  }
+  return null;
 }
 
-// Categorías de gasto personalizadas por usuario (persistidas en settings.customGastoCategories)
+// Ocupación → categorías de ingreso sugeridas
+export const OCCUPATIONS = [
+  { key: 'taxista', label: 'Taxista / Conductor', income: 'Negocio',
+    suggestedCategories: ['Taxi', 'Uber', 'InDriver', 'Rappi', 'Cabify', 'Beat'] },
+  { key: 'comerciante', label: 'Comerciante', income: 'Negocio',
+    suggestedCategories: ['Ventas', 'Comisiones', 'Delivery', 'Por mayor'] },
+  { key: 'empleado', label: 'Empleado', income: 'Sueldo',
+    suggestedCategories: ['Bonos', 'Horas extra', 'Gratificación', 'CTS'] },
+  { key: 'independiente', label: 'Independiente / Freelance', income: 'Freelance',
+    suggestedCategories: ['Proyectos', 'Consultoría', 'Diseño', 'Programación', 'Marketing'] },
+  { key: 'estudiante', label: 'Estudiante', income: 'Otros',
+    suggestedCategories: ['Mesada', 'Beca', 'Tutorías', 'Trabajo part-time'] },
+  { key: 'otro', label: 'Otro', income: 'Otros', suggestedCategories: [] },
+];
+export const occupationIncome = (key) => (OCCUPATIONS.find((o) => o.key === key) || {}).income || null;
+export function incomeCategories(occupationKey, settings) {
+  const inc = occupationIncome(occupationKey);
+  const base = inc && !CATEGORIES.ingreso.includes(inc) ? [inc, ...CATEGORIES.ingreso] : [...CATEGORIES.ingreso];
+  const custom = (settings && settings.customIngresoCategories) || [];
+  const result = [...base];
+  for (const c of custom) { if (!result.includes(c)) result.push(c); }
+  return result;
+}
+
+// Lista agrupada para el Dropdown de ingresos (con subcategorías)
+export function incomeCategoriesGrouped(occupationKey, settings) {
+  const flat = incomeCategories(occupationKey, settings);
+  const subs = (settings && settings.customIngresoSubcategories) || {};
+  const result = [];
+  flat.forEach(cat => {
+    const catSubs = subs[cat] || [];
+    result.push({ key: cat, label: cat, color: categoryColor(cat), hasChildren: catSubs.length > 0 });
+    catSubs.forEach(sub => result.push({ key: sub, label: sub, color: categoryColor(cat), isChild: true, parent: cat }));
+  });
+  return result;
+}
+
+// Conteo de uso por categoría (para ordenar las más usadas primero)
+export function usageByCategory(transactions, type) {
+  const counts = {};
+  (transactions || []).filter(t => t.type === type).forEach(t => {
+    if (t.category) counts[t.category] = (counts[t.category] || 0) + 1;
+  });
+  return counts;
+}
+
+// Ordena un array de opciones agrupadas [{key, isChild?, parent?}] por uso (más usadas primero)
+export function sortGroupedByUsage(grouped, usageCounts) {
+  if (!usageCounts || Object.keys(usageCounts).length === 0) return grouped;
+  const parents = grouped.filter(o => !o.isChild);
+  const childrenOf = {};
+  grouped.filter(o => o.isChild).forEach(o => {
+    if (!childrenOf[o.parent]) childrenOf[o.parent] = [];
+    childrenOf[o.parent].push(o);
+  });
+  const sorted = [...parents].sort((a, b) => {
+    const ua = (usageCounts[a.key] || 0) + (childrenOf[a.key] || []).reduce((s, c) => s + (usageCounts[c.key] || 0), 0);
+    const ub = (usageCounts[b.key] || 0) + (childrenOf[b.key] || []).reduce((s, c) => s + (usageCounts[c.key] || 0), 0);
+    return ub - ua;
+  });
+  const result = [];
+  sorted.forEach(p => { result.push(p); (childrenOf[p.key] || []).forEach(c => result.push(c)); });
+  return result;
+}
+
+// Categorías de gasto — lista plana (compatible con código existente)
 export function userCategories(settings) {
   const custom = (settings && settings.customGastoCategories) || [];
-  return [...CATEGORIES.gasto, ...custom];
+  const subs = (settings && settings.customSubcategories) || {};
+  const all = [...CATEGORIES.gasto, ...custom];
+  const result = [];
+  all.forEach(cat => {
+    result.push(cat);
+    (subs[cat] || []).forEach(sub => result.push(sub));
+  });
+  return result;
+}
+
+// Lista agrupada para el Dropdown de gastos (con subcategorías)
+export function userCategoriesGrouped(settings) {
+  const custom = (settings && settings.customGastoCategories) || [];
+  const subs = (settings && settings.customSubcategories) || {};
+  const all = [...CATEGORIES.gasto, ...custom];
+  const result = [];
+  all.forEach(cat => {
+    const catSubs = subs[cat] || [];
+    result.push({ key: cat, label: cat, color: categoryColor(cat), hasChildren: catSubs.length > 0 });
+    catSubs.forEach(sub => result.push({ key: sub, label: sub, color: categoryColor(cat), isChild: true, parent: cat }));
+  });
+  return result;
 }
 
 export function netWorth(finance) {
-  const accounts = (finance.accounts || []).reduce((a, x) => a + (x.balance || 0), 0);
-  const debitBal = (finance.cards || []).filter((c) => c.kind === 'debito').reduce((a, c) => a + (c.balance || 0), 0);
+  // Cuentas vinculadas (linkedTo) no se suman: su saldo ya está en la cuenta padre
+  const accounts = (finance.accounts || []).filter(a => !a.linkedTo).reduce((a, x) => a + (x.balance || 0), 0);
+  const debitBal = (finance.cards || []).filter((c) => c.kind === 'debito' && !c.linkedTo).reduce((a, c) => a + (c.balance || 0), 0);
   const creditUsed = (finance.cards || []).filter((c) => c.kind !== 'debito').reduce((a, c) => a + (c.used || 0), 0);
   const debts = (finance.debts || []).reduce((a, x) => a + Math.max(0, (x.amount || 0) - (x.paid || 0)), 0);
   const loans = (finance.loans || []).reduce((a, x) => a + loanPending(x), 0);

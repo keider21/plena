@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../utils/theme';
 
@@ -58,7 +57,7 @@ export default function MentalidadScreen() {
   return (
     <ScrollView style={styles.bg} contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
 
-      <LinearGradient colors={['#1A0A3E', '#0D0D1A']} style={styles.header}>
+      <View style={styles.header}>
         <Text style={styles.headerTitle}>Crecimiento</Text>
         <Text style={styles.headerSub}>Mentalidad y referencias de éxito</Text>
         <View style={styles.tabRow}>
@@ -74,7 +73,7 @@ export default function MentalidadScreen() {
             </TouchableOpacity>
           ))}
         </View>
-      </LinearGradient>
+      </View>
 
       {tab === 'mentalidad' && (
         <>
@@ -178,7 +177,7 @@ export default function MentalidadScreen() {
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
   container: {},
-  header: { padding: 20, paddingTop: 56, borderBottomLeftRadius: 24, borderBottomRightRadius: 24, marginBottom: 8 },
+  header: { padding: 20, paddingTop: 56, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 8 },
   headerTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text },
   headerSub: { fontSize: 13, color: COLORS.textSub, marginTop: 2, marginBottom: 16 },
   tabRow: { flexDirection: 'row', backgroundColor: COLORS.card + 'AA', borderRadius: 12, padding: 4, gap: 4 },
