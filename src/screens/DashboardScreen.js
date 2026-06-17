@@ -10,7 +10,6 @@ import { COLORS, NEOM, CAT_COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
 import { goalProgress, catOf } from '../utils/goals';
 import { registerForPushNotifications, reschedulePlan } from '../utils/notifications';
-import { useStore as useStoreStatic } from '../store/useStore';
 
 const QUOTES = [
   '"Piensa como, habla como, actúa como, viste como."',
@@ -38,7 +37,7 @@ export default function DashboardScreen({ navigation }) {
     // Auto-reprogramar alarmas al abrir la app (cubre reinstalación, reinicio del
     // teléfono y cambios manuales hechos mientras la app estaba cerrada).
     const tryReschedule = () => {
-      const { planning, habits } = useStoreStatic.getState();
+      const { planning, habits } = useStore.getState();
       if (!planning?.schedule || !planning?.activities?.length) return false;
       reschedulePlan(planning, habits).catch(() => {});
       return true;

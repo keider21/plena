@@ -6,6 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import { View, ActivityIndicator } from 'react-native';
+import Constants from 'expo-constants';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -58,7 +59,7 @@ export default function App() {
       // Check for app updates
       try {
         const { version: latestVersion } = await checkLatestVersion();
-        const currentVersion = '1.0.0'; // Update this with your version
+        const currentVersion = Constants.expoConfig?.version || '1.0.0';
         if (latestVersion && latestVersion > currentVersion) {
           Alert.alert(
             '📲 Actualización disponible',

@@ -507,7 +507,7 @@ export const useStore = create((set, get) => ({
         return { ...a, balance: (a.balance || 0) + amt };
       }
       if (debitLinkedAccId && a.id === debitLinkedAccId) {
-        return { ...a, balance: (a.balance || 0) - amt };
+        return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? amt : -amt) };
       }
       return a;
     });
@@ -524,9 +524,9 @@ export const useStore = create((set, get) => ({
           if (t.type === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - amt) };
           if (c.kind === 'debito') {
             if (c.linkedTo) return c; // balance viene de la cuenta vinculada
-            return { ...c, balance: (c.balance || 0) - amt };
+            return { ...c, balance: (c.balance || 0) + (t.type === 'ingreso' ? amt : -amt) };
           }
-          return { ...c, used: (c.used || 0) + amt };
+          return { ...c, used: Math.max(0, (c.used || 0) + (t.type === 'ingreso' ? -amt : amt)) };
         })
       : f.cards;
     // Tarjetas débito vinculadas espejo la cuenta
@@ -560,7 +560,7 @@ export const useStore = create((set, get) => ({
         return { ...a, balance: (a.balance || 0) - amt };
       }
       if (debitLinkedAccId && a.id === debitLinkedAccId) {
-        return { ...a, balance: (a.balance || 0) + amt };
+        return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? -amt : amt) };
       }
       return a;
     });
@@ -575,9 +575,9 @@ export const useStore = create((set, get) => ({
           if (t.type === 'pago') return { ...c, used: (c.used || 0) + amt };
           if (c.kind === 'debito') {
             if (c.linkedTo) return c;
-            return { ...c, balance: (c.balance || 0) + amt };
+            return { ...c, balance: (c.balance || 0) + (t.type === 'ingreso' ? -amt : amt) };
           }
-          return { ...c, used: Math.max(0, (c.used || 0) - amt) };
+          return { ...c, used: Math.max(0, (c.used || 0) + (t.type === 'ingreso' ? amt : -amt)) };
         })
       : f.cards;
     cards = cards.map(c => {
@@ -598,10 +598,17 @@ export const useStore = create((set, get) => ({
     const newAccountId = patch.accountId !== undefined ? patch.accountId : old.accountId;
     const newToAccountId = patch.toAccountId !== undefined ? patch.toAccountId : old.toAccountId;
     const newCardId = patch.cardId !== undefined ? patch.cardId : old.cardId;
+
+    const oldTxCard = old.cardId ? f.cards.find(c => c.id === old.cardId) : null;
+    const oldDebitLinkedAccId = (oldTxCard?.kind === 'debito' && oldTxCard?.linkedTo) ? oldTxCard.linkedTo : null;
+
     // Revert old effects on accounts
     let accounts = f.accounts.map(a => {
       if (a.id === old.accountId) return { ...a, balance: (a.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
       if (old.type === 'transferencia' && a.id === old.toAccountId) return { ...a, balance: (a.balance || 0) - oldAmt };
+      if (oldDebitLinkedAccId && a.id === oldDebitLinkedAccId) {
+        return { ...a, balance: (a.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
+      }
       return a;
     });
     // Revert old effects on cards
@@ -609,14 +616,24 @@ export const useStore = create((set, get) => ({
       ? f.cards.map(c => {
           if (c.id !== old.cardId) return c;
           if (old.type === 'pago') return { ...c, used: (c.used || 0) + oldAmt };
-          if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) + oldAmt };
-          return { ...c, used: Math.max(0, (c.used || 0) - oldAmt) };
+          if (c.kind === 'debito') {
+            if (c.linkedTo) return c;
+            return { ...c, balance: (c.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
+          }
+          return { ...c, used: Math.max(0, (c.used || 0) + (old.type === 'ingreso' ? oldAmt : -oldAmt)) };
         })
       : f.cards;
+
+    const newTxCard = newCardId ? f.cards.find(c => c.id === newCardId) : null;
+    const newDebitLinkedAccId = (newTxCard?.kind === 'debito' && newTxCard?.linkedTo) ? newTxCard.linkedTo : null;
+
     // Apply new effects on accounts
     accounts = accounts.map(a => {
       if (a.id === newAccountId) return { ...a, balance: (a.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
       if (newType === 'transferencia' && a.id === newToAccountId) return { ...a, balance: (a.balance || 0) + newAmt };
+      if (newDebitLinkedAccId && a.id === newDebitLinkedAccId) {
+        return { ...a, balance: (a.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
+      }
       return a;
     });
     // Apply new effects on cards
@@ -624,8 +641,11 @@ export const useStore = create((set, get) => ({
       cards = cards.map(c => {
         if (c.id !== newCardId) return c;
         if (newType === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - newAmt) };
-        if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) - newAmt };
-        return { ...c, used: (c.used || 0) + newAmt };
+        if (c.kind === 'debito') {
+          if (c.linkedTo) return c;
+          return { ...c, balance: (c.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
+        }
+        return { ...c, used: Math.max(0, (c.used || 0) + (newType === 'ingreso' ? -newAmt : newAmt)) };
       });
     }
     // Sync linked accounts and cards

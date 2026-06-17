@@ -1101,12 +1101,23 @@ function CuentasCobrar({ finance, onEdit, onDel, onAdd, onCollect, onHistory }) 
   if (receivables.length === 0) {
     return <EmptyState icon="cash-outline" title="Sin cuentas por cobrar" subtitle="Registra a quién le prestaste dinero, el monto y cuándo vence. Lleva el seguimiento de cobros." actionLabel="Agregar cuenta por cobrar" onAction={onAdd} />;
   }
-  const totalPend = receivables.reduce((s, r) => s + Math.max(0, (r.amount || 0) - (r.paid || 0)), 0);
+
+  const totalsByCur = receivables.reduce((acc, r) => {
+    const cur = r.currency || 'PEN';
+    const pend = Math.max(0, (r.amount || 0) - (r.paid || 0));
+    acc[cur] = (acc[cur] || 0) + pend;
+    return acc;
+  }, {});
+
   return (
     <View>
       <View style={styles.totalCard}>
         <Text style={styles.statLbl}>Total por cobrar</Text>
-        <Text style={[styles.totalVal, { color: COLORS.green }]}>{formatMoney(totalPend, receivables[0]?.currency || 'PEN')}</Text>
+        {Object.entries(totalsByCur).map(([curCode, amount]) => (
+          <Text key={curCode} style={[styles.totalVal, { color: COLORS.green }]}>
+            {formatMoney(amount, curCode)}
+          </Text>
+        ))}
       </View>
       {receivables.map((r) => {
         const pct = r.amount ? Math.min(100, Math.round(((r.paid || 0) / r.amount) * 100)) : 0;
