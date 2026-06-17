@@ -1022,4 +1022,39 @@ export const useStore = create((set, get) => ({
       return { error: e.message };
     }
   },
+
+  resetAllData: async () => {
+    const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [] };
+    const emptyState = {
+      habits: DEFAULT_HABITS,
+      habitLogs: {},
+      goals: DEFAULT_GOALS,
+      finances: [],
+      onboardingDone: false,
+      userProfile: {},
+      planning: DEFAULT_PLANNING,
+      calendar: { events: [], objectives: [] },
+      finance: emptyFinance,
+      areas: [],
+      aiConversations: [],
+    };
+    set(emptyState);
+    try {
+      await Promise.all([
+        AsyncStorage.removeItem('habitLogs'),
+        AsyncStorage.removeItem('habits'),
+        AsyncStorage.removeItem('goals'),
+        AsyncStorage.removeItem('finances'),
+        AsyncStorage.removeItem('userProfile'),
+        AsyncStorage.removeItem('onboardingDone'),
+        AsyncStorage.removeItem('planning'),
+        AsyncStorage.removeItem('calendar'),
+        AsyncStorage.removeItem('finance'),
+        AsyncStorage.removeItem('areas'),
+        AsyncStorage.removeItem('aiConversations'),
+      ]);
+      const uid = auth?.currentUser?.uid;
+      if (uid) await get().syncAllToFirebase(uid);
+    } catch (e) { console.log('Reset error', e); }
+  },
 }));

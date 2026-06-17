@@ -49,7 +49,48 @@ export default function ProfileScreen({ navigation }) {
     { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
     { icon: 'barbell-outline', label: 'Editar mis hábitos', color: COLORS.amber, onPress: () => navigation.navigate('Habitos') },
     { icon: 'star-outline', label: 'Editar mis metas', color: '#EC4899', onPress: () => navigation.navigate('Metas') },
-    { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan 100% localmente en tu teléfono. No se envía nada a servidores.') },
+    {
+      icon: 'shield-outline',
+      label: 'Privacidad y datos',
+      color: COLORS.blue,
+      onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan localmente y se sincronizan de forma segura en tu cuenta de Firebase para que no pierdas nada al cambiar de dispositivo.')
+    },
+    {
+      icon: 'trash-outline',
+      label: 'Reiniciar todos los datos',
+      color: COLORS.red,
+      onPress: () => {
+        Alert.alert(
+          '⚠️ ¡Atención!',
+          'Esto borrará permanentemente todos tus hábitos, finanzas, metas y configuraciones. No se puede deshacer.',
+          [
+            { text: 'Cancelar', style: 'cancel' },
+            {
+              text: 'SÍ, BORRAR TODO',
+              style: 'destructive',
+              onPress: () => {
+                Alert.alert(
+                  '¿Estás complemente seguro?',
+                  'Se eliminarán también los datos de la nube.',
+                  [
+                    { text: 'No, esperar', style: 'cancel' },
+                    {
+                      text: 'BORRAR DEFINITIVAMENTE',
+                      style: 'destructive',
+                      onPress: async () => {
+                        await store.resetAllData();
+                        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                        Alert.alert('Datos borrados', 'La aplicación se ha reiniciado.');
+                      }
+                    }
+                  ]
+                );
+              }
+            }
+          ]
+        );
+      }
+    },
     { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
     { icon: 'terminal-outline', label: 'Ver logs de la app', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
   ];
