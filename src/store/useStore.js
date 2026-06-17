@@ -991,6 +991,7 @@ export const useStore = create((set, get) => ({
         syncToFirebase(userId, 'areas', state.areas),
         syncToFirebase(userId, 'settings', state.settings),
         syncToFirebase(userId, 'userProfile', state.userProfile),
+        syncToFirebase(userId, 'aiConversations', state.aiConversations),
       ]);
       return { error: null };
     } catch (e) {
@@ -1001,7 +1002,7 @@ export const useStore = create((set, get) => ({
   syncFromFirebase: async (userId) => {
     if (!userId) return { error: 'No user ID' };
     try {
-      const keys = ['habits', 'habitLogs', 'goals', 'planning', 'finance', 'calendar', 'areas', 'settings', 'userProfile'];
+      const keys = ['habits', 'habitLogs', 'goals', 'planning', 'finance', 'calendar', 'areas', 'settings', 'userProfile', 'aiConversations'];
       const updates = {};
       for (const key of keys) {
         const { data } = await syncFromFirebase(userId, key);
