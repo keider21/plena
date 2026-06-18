@@ -20,10 +20,10 @@ const EXAMPLES = [
   'Resumen general',
 ];
 
-const WELCOME = {
+const WELCOME = (name) => ({
   from: 'ia',
-  text: `Hola 👋 Soy tu asistente. Conozco toda la app Vida Plena: finanzas, hábitos, metas, áreas, plan, mentalidad y más. Probá preguntarme algo o tocá un ejemplo abajo.`,
-};
+  text: `Hola 👋 Soy ${name}. Conozco toda la app Vida Plena: finanzas, hábitos, metas, áreas, plan, mentalidad y más. Probá preguntarme algo o tocá un ejemplo abajo.`,
+});
 
 const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 
@@ -185,8 +185,36 @@ function buildAnswer(input, store) {
   }
 
   // 10) METAS
-  if (/(meta|objetivo|progress|como van mis metas)/.test(q)) {
+  if (/(meta|objetivo|progress|como van mis metas|ayudame.*meta|desglosa.*meta)/.test(q)) {
     const goals = store.goals || [];
+
+    // Si pide ayuda con una meta específica o desglosarla
+    const metaMatch = input.match(/(?:ayudame con la meta|desglosa la meta|meta de)\s+([\w\s]+)/i);
+    if (metaMatch) {
+      const target = metaMatch[1].trim();
+      const suggestions = {
+        'casa': ['Ahorrar para la cuota inicial', 'Investigar zonas y precios', 'Verificar historial crediticio', 'Contactar agentes inmobiliarios'],
+        'carro': ['Ahorrar para el adelanto', 'Elegir modelo y marca', 'Comparar seguros', 'Tramitar licencia de conducir'],
+        'ingles': ['Hacer examen de nivel', 'Inscribirse en curso o app', 'Practicar 30 min diarios', 'Ver películas en inglés'],
+        'negocio': ['Definir modelo de negocio', 'Hacer plan financiero', 'Buscar proveedores', 'Crear redes sociales'],
+        'estudiar': ['Elegir carrera o curso', 'Investigar universidades', 'Organizar horarios', 'Preparar presupuesto'],
+      };
+
+      let foundKey = Object.keys(suggestions).find(k => target.toLowerCase().includes(k));
+      if (foundKey) {
+        return {
+          text: `Para tu meta de **${target}**, te sugiero estos pasos:\n\n` +
+            suggestions[foundKey].map((s, i) => `${i+1}. ${s}`).join('\n') +
+            `\n\n¿Quieres que guarde esta meta con estos pasos?`,
+          action: {
+            type: 'confirm_goal',
+            title: target.charAt(0).toUpperCase() + target.slice(1),
+            steps: suggestions[foundKey]
+          }
+        };
+      }
+    }
+
     if (goals.length === 0) return { text: 'No tenés metas todavía. Andá a **Metas** y tocá "+" para crear una (o usá el Asistente de metas).' };
     const lines = goals.slice(0, 5).map((g) => {
       const pct = goalProgress(g);
@@ -381,24 +409,90 @@ function buildAnswer(input, store) {
 
 export default function AsistenteIAScreen() {
   const store = useStore();
-  const [messages, setMessages] = useState([WELCOME]);
+  const { settings, setSetting } = store;
+  const aiName = settings?.aiName || 'Asistente';
+  const [messages, setMessages] = useState([WELCOME(aiName)]);
   const [text, setText] = useState('');
   const [ratings, setRatings] = useState({});
+  const [namingModal, setNamingModal] = useState(!settings?.aiName);
+  const [newName, setNewName] = useState(aiName);
   const scrollRef = useRef(null);
 
   const send = (msg) => {
     const t = (msg ?? text).trim();
     if (!t) return;
     Haptics.selectionAsync().catch(() => {});
+
+    // Simulación de detección de gasto (regex simple para la demo de confirmación)
+    const gastoMatch = t.match(/(?:registra|paga|compre|gaste)\s+(?:un\s+)?(?:gasto\s+)?(?:de\s+)?(\d+(?:[.,]\d+)?)\s+(?:en\s+)?([\w\s]+)/i);
+
     const convId = `ia_${Date.now()}`;
     const answer = buildAnswer(t, store);
     const userMsg = { from: 'user', text: t };
-    const iaMsg = { from: 'ia', text: answer.text, convId };
+
+    let iaMsg = { from: 'ia', text: answer.text, convId };
+
+    if (gastoMatch) {
+      const amount = parseFloat(gastoMatch[1].replace(',', '.'));
+      const category = gastoMatch[2].trim();
+      iaMsg.action = {
+        type: 'confirm_expense',
+        amount,
+        category: category.charAt(0).toUpperCase() + category.slice(1),
+        originalText: t
+      };
+    }
+
     setMessages((m) => [...m, userMsg, iaMsg]);
     setText('');
     store.saveAiConversation({ id: convId, question: t, answer: answer.text });
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+  };
+
+  const confirmAction = async (msgIdx, action) => {
+    let success = false;
+    let feedback = '';
+
+    if (action.type === 'confirm_expense') {
+      const res = await store.addTransaction({
+        type: 'gasto',
+        accountId: store.finance?.accounts[0]?.id,
+        amount: action.amount,
+        category: 'Otros',
+        note: `IA: ${action.category}`
+      });
+      if (res && res.error) {
+        Alert.alert('Error', res.error);
+      } else {
+        success = true;
+        feedback = `✅ Entendido. He registrado el gasto de ${formatMoney(action.amount, store.settings.currency)} en "${action.category}".`;
+      }
+    } else if (action.type === 'confirm_goal') {
+      const g = {
+        title: action.title,
+        category: 'personal',
+        actionPlan: action.steps.map(s => ({ id: Math.random().toString(36).slice(2), text: s, done: false })),
+        createdAt: format(new Date(), 'yyyy-MM-dd')
+      };
+      await store.addGoal(g);
+      success = true;
+      feedback = `✅ ¡Meta creada! He guardado "${action.title}" con los pasos sugeridos. Puedes verla en la pestaña de Metas.`;
+    }
+
+    if (success) {
+      const newMessages = [...messages];
+      newMessages[msgIdx] = { ...newMessages[msgIdx], actionDone: true, text: feedback };
+      setMessages(newMessages);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+    }
+  };
+
+  const saveAiName = async () => {
+    if (!newName.trim()) return;
+    await setSetting('aiName', newName.trim());
+    setNamingModal(false);
+    setMessages([WELCOME(newName.trim())]);
   };
 
   const rate = (convId, value) => {
@@ -426,7 +520,10 @@ export default function AsistenteIAScreen() {
         <View style={styles.heroRow}>
           <View style={styles.heroIcon}><Ionicons name="sparkles" size={20} color="#fff" /></View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.heroTitle}>Asistente IA</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Text style={styles.heroTitle}>{aiName}</Text>
+              <TouchableOpacity onPress={() => setNamingModal(true)}><Ionicons name="pencil" size={14} color={COLORS.purpleLight} /></TouchableOpacity>
+            </View>
             <Text style={styles.heroSub}>Tu copiloto dentro de Vida Plena</Text>
           </View>
           <View style={styles.versionChip}>
@@ -443,6 +540,34 @@ export default function AsistenteIAScreen() {
                 <Text style={[styles.bubbleText, m.from === 'user' && { color: '#fff' }]}>
                   {renderText(m.text)}
                 </Text>
+                {m.action && !m.actionDone && (
+                  <View style={styles.actionCard}>
+                    <Text style={styles.actionTitle}>¿Confirmas esta acción?</Text>
+                    {m.action.type === 'confirm_expense' ? (
+                      <>
+                        <Text style={styles.actionDetail}>Gasto: {formatMoney(m.action.amount, settings.currency)}</Text>
+                        <Text style={styles.actionDetail}>Nota: {m.action.category}</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text style={styles.actionDetail}>Meta: {m.action.title}</Text>
+                        <Text style={styles.actionDetail}>Pasos: {m.action.steps.length}</Text>
+                      </>
+                    )}
+                    <View style={styles.actionBtns}>
+                      <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.green }]} onPress={() => confirmAction(i, m.action)}>
+                        <Text style={styles.actionBtnText}>Confirmar</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[styles.actionBtn, { backgroundColor: COLORS.bg3 }]} onPress={() => {
+                        const next = [...messages];
+                        next[i] = { ...next[i], actionDone: true, text: 'Omitido. ¿Hay algo más en lo que pueda ayudarte?' };
+                        setMessages(next);
+                      }}>
+                        <Text style={[styles.actionBtnText, { color: COLORS.textSub }]}>Ignorar</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
               {m.from === 'ia' && m.convId && (
                 <View style={styles.feedbackRow}>
@@ -487,12 +612,38 @@ export default function AsistenteIAScreen() {
           <TouchableOpacity style={styles.sendBtn} onPress={() => send()}><Ionicons name="send" size={18} color="#fff" /></TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <Modal visible={namingModal} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Nombra a tu asistente</Text>
+            <Text style={styles.modalSub}>¿Cómo te gustaría llamar a tu copiloto inteligente? Puedes cambiarlo después.</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Ej. Jarvis, Aura, Mentor..."
+              placeholderTextColor={COLORS.textMuted}
+              autoFocus
+            />
+            <TouchableOpacity style={styles.modalBtn} onPress={saveAiName}>
+              <Text style={styles.modalBtnText}>Guardar nombre</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
+  actionCard: { backgroundColor: COLORS.bg2, borderRadius: 12, padding: 12, marginTop: 10, borderWidth: 1, borderColor: COLORS.purple + '33' },
+  actionTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text, marginBottom: 4 },
+  actionDetail: { fontSize: 13, color: COLORS.textSub },
+  actionBtns: { flexDirection: 'row', gap: 8, marginTop: 10 },
+  actionBtn: { flex: 1, paddingVertical: 8, borderRadius: 8, alignItems: 'center' },
+  actionBtnText: { color: '#fff', fontSize: 12, fontWeight: '700' },
   hero: { padding: 20, paddingTop: 54, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border },
   heroRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   heroIcon: { width: 44, height: 44, borderRadius: 14, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center' },
@@ -517,4 +668,11 @@ const styles = StyleSheet.create({
   micBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.card, alignItems: 'center', justifyContent: 'center', borderWidth: 0.5, borderColor: COLORS.cardBorder },
   input: { flex: 1, maxHeight: 110, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 11, color: COLORS.text, fontSize: 15, borderWidth: 0.5, borderColor: COLORS.cardBorder },
   sendBtn: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center' },
+  modalBackdrop: { flex: 1, backgroundColor: '#00000077', justifyContent: 'center', alignItems: 'center', padding: 20 },
+  modalSheet: { backgroundColor: COLORS.bg2, width: '100%', borderRadius: 24, padding: 24, gap: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: COLORS.text, textAlign: 'center' },
+  modalSub: { fontSize: 14, color: COLORS.textSub, textAlign: 'center', lineHeight: 20 },
+  modalInput: { backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: COLORS.text, fontSize: 16, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  modalBtn: { backgroundColor: COLORS.purple, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  modalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

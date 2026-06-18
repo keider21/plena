@@ -235,12 +235,17 @@ export function userCategoriesGrouped(settings) {
   return result;
 }
 
-export function netWorth(finance) {
-  // Cuentas vinculadas (linkedTo) no se suman: su saldo ya está en la cuenta padre
+export function totalLiquid(finance) {
+  // Solo dinero disponible: cuentas (no vinculadas) + tarjetas de débito (no vinculadas)
   const accounts = (finance.accounts || []).filter(a => !a.linkedTo).reduce((a, x) => a + (x.balance || 0), 0);
   const debitBal = (finance.cards || []).filter((c) => c.kind === 'debito' && !c.linkedTo).reduce((a, c) => a + (c.balance || 0), 0);
+  return accounts + debitBal;
+}
+
+export function netWorth(finance) {
+  const liquid = totalLiquid(finance);
   const creditUsed = (finance.cards || []).filter((c) => c.kind !== 'debito').reduce((a, c) => a + (c.used || 0), 0);
   const debts = (finance.debts || []).reduce((a, x) => a + Math.max(0, (x.amount || 0) - (x.paid || 0)), 0);
   const loans = (finance.loans || []).reduce((a, x) => a + loanPending(x), 0);
-  return accounts + debitBal - creditUsed - debts - loans;
+  return liquid - creditUsed - debts - loans;
 }

@@ -227,6 +227,17 @@ export async function openAppNotifSettings() {
   await IL().startActivityAsync('android.settings.APP_NOTIFICATION_SETTINGS', { extra: { 'android.provider.extra.APP_PACKAGE': PKG } });
 }
 
+export async function requestNotificationListenerPermission() {
+  if (Platform.OS !== 'android') return;
+  const il = IL();
+  try {
+    // Esto abre la pantalla de ajustes de "Acceso a notificaciones"
+    await il.startActivityAsync('android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS');
+  } catch (e) {
+    console.log('Error al abrir ajustes de acceso a notificaciones:', e);
+  }
+}
+
 // ─── Migración: limpia alarmas viejas con IDs por día-de-semana (build anterior) ──
 function cancelLegacyNativeActivities(activities) {
   if (!FSN || !activities?.length) return;

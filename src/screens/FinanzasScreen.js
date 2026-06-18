@@ -11,7 +11,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   ACCOUNT_TYPES, accountType, LOAN_TYPES, loanType, DEBT_PRIORITIES, debtPriority,
-  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, periodRange, loanPending, loanBreakdown, loanTotalCost, categoryColor, CARD_KINDS,
+  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, totalLiquid, periodRange, loanPending, loanBreakdown, loanTotalCost, categoryColor, CARD_KINDS,
   incomeCategoriesGrouped, userCategoriesGrouped, usageByCategory, sortGroupedByUsage,
 } from '../utils/finance';
 import { purchasePaymentInfo } from '../utils/cardCycle';
@@ -207,14 +207,20 @@ export default function FinanzasScreen({ navigation, route }) {
   useEffect(() => {
     const q = route?.params?.quickAdd;
     if (!q) return;
-    navigation.setParams({ quickAdd: undefined });
+    const { amount, note } = route.params;
+    navigation.setParams({ quickAdd: undefined, amount: undefined, note: undefined });
     if (finance.accounts.length === 0) {
       Alert.alert('Primero crea una cuenta', 'Necesitas al menos una cuenta para registrar movimientos.');
       return;
     }
     setTab('resumen');
     openModal('movement');
-    if (q !== 'movement') setF((prev) => ({ ...prev, type: q }));
+    setF((prev) => ({
+      ...prev,
+      type: q === 'movement' ? 'gasto' : q,
+      amount: amount ? String(amount) : prev.amount,
+      note: note || prev.note
+    }));
   }, [route?.params?.quickAdd]);
 
   const save = async () => {
@@ -299,7 +305,9 @@ export default function FinanzasScreen({ navigation, route }) {
     <View style={styles.bg}>
       <View style={styles.hero}>
         <Text style={styles.heroTitle}>Finanzas</Text>
-        <Text style={styles.heroSub}>Patrimonio: {formatMoney(netWorth(finance), cur)}</Text>
+        <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+          <Text style={styles.heroSub}>Saldo actual: {formatMoney(totalLiquid(finance), cur)}</Text>
+        </View>
       </View>
 
       <TouchableOpacity style={styles.navBar} onPress={() => setMenuOpen(true)} activeOpacity={0.85}>
@@ -766,7 +774,7 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx }) 
   const accName = (id) => finance.accounts.find((a) => a.id === id)?.name || '—';
   const srcName = (t) => (t.cardId ? '💳 ' + (finance.cards.find((c) => c.id === t.cardId)?.bank || 'Tarjeta') : accName(t.accountId));
   const [search, setSearch] = useState('');
-  const totalBalance = netWorth(finance);
+  const liquid = totalLiquid(finance);
 
   // Filter transactions by period when no search term, show all when searching
   const [s, e] = periodRange(period);
@@ -782,8 +790,8 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx }) 
     <View>
       {/* Saldo consolidado */}
       <View style={[styles.totalCard, { marginBottom: 12 }]}>
-        <Text style={styles.statLbl}>Saldo consolidado</Text>
-        <Text style={[styles.totalVal, { color: totalBalance >= 0 ? COLORS.green : COLORS.red }]}>{totalBalance >= 0 ? '+' : ''}{formatMoney(totalBalance, cur)}</Text>
+        <Text style={styles.statLbl}>Saldo actual en cuentas</Text>
+        <Text style={[styles.totalVal, { color: liquid >= 0 ? COLORS.green : COLORS.red }]}>{liquid >= 0 ? '+' : ''}{formatMoney(liquid, cur)}</Text>
       </View>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>

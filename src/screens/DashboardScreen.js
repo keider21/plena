@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
-import { categoryColor } from '../utils/finance';
+import { categoryColor, totalLiquid } from '../utils/finance';
 import { COLORS, NEOM, CAT_COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
 import { goalProgress, catOf } from '../utils/goals';
@@ -21,7 +21,7 @@ const QUOTES = [
 ];
 
 export default function DashboardScreen({ navigation }) {
-  const { currentUser, habits, habitLogs, goals, settings, getTodayStats, getWeeklyScore, getMonthlyStats, finance: storeFinance, getHabitStreak, logHabit } = useStore();
+  const { currentUser, habits, habitLogs, goals, settings, getTodayStats, getWeeklyScore, getMonthlyStats, finance: storeFinance, getHabitStreak, logHabit, dismissPendingNotif } = useStore();
   const cur = settings.currency;
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
@@ -75,7 +75,9 @@ export default function DashboardScreen({ navigation }) {
   ];
   const goFinance = (q) => { setQuickMenu(false); navigation.navigate('Finanzas', { quickAdd: q }); };
 
-  const realBalance = (storeFinance?.accounts || []).filter(a => !a.linkedTo).reduce((s, a) => s + (a.balance || 0), 0);
+  const realBalance = (typeof totalLiquid === 'function') ? totalLiquid(storeFinance) : (storeFinance?.accounts || []).filter(a => !a.linkedTo).reduce((s, a) => s + (a.balance || 0), 0);
+
+  const pendingNotifs = storeFinance?.pendingFromNotifs || [];
 
   return (
     <View style={{ flex: 1 }}>
@@ -89,7 +91,7 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.heroDate}>{dayName}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.avatarBtn}>
-            <View style={styles.avatar}>
+            <View style={[styles.avatar, { backgroundColor: COLORS.purple }]}>
               <Text style={styles.avatarText}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
             </View>
           </TouchableOpacity>
@@ -122,6 +124,21 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
       </View>
+
+      {pendingNotifs.length > 0 && (
+        <View style={styles.notifSection}>
+          {pendingNotifs.map((n) => (
+            <TouchableOpacity key={n.id} style={styles.notifCard} onPress={() => navigation.navigate('Finanzas', { quickAdd: 'gasto', amount: n.amount, note: n.title })}>
+              <View style={styles.notifIcon}><Ionicons name="notifications" size={18} color="#fff" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.notifTitle}>Pago detectado</Text>
+                <Text style={styles.notifDesc}>Recibiste un {n.app} por {formatMoney(n.amount, cur)}. ¿Registrar?</Text>
+              </View>
+              <TouchableOpacity onPress={() => dismissPendingNotif(n.id)} style={{ padding: 4 }}><Ionicons name="close" size={18} color={COLORS.textMuted} /></TouchableOpacity>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('Finanzas')} style={styles.balanceCard}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -358,6 +375,11 @@ export default function DashboardScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
+  notifSection: { paddingHorizontal: 14, paddingTop: 14, gap: 10 },
+  notifCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: COLORS.bg2, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: COLORS.purple + '44', ...NEOM.card },
+  notifIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center' },
+  notifTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  notifDesc: { fontSize: 12, color: COLORS.textSub, marginTop: 1 },
   container: { paddingBottom: 20 },
 
   // ── Hero header (neumorphismo claro) ──────────────────────────────────────

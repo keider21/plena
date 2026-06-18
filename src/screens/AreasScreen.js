@@ -21,6 +21,7 @@ export default function AreasScreen({ navigation }) {
   const [expanded, setExpanded] = useState({});
   const [menu, setMenu] = useState(null);
   const [input, setInput] = useState(null);
+  const [viewMode, setViewMode] = useState('list'); // 'list' o 'map'
   const [noteOpen, setNoteOpen] = useState({});
   const toggleNote = (id) => setNoteOpen((n) => ({ ...n, [id]: !n[id] }));
 
@@ -80,8 +81,26 @@ export default function AreasScreen({ navigation }) {
     <View style={styles.bg}>
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
-          <Text style={styles.heroTitle}>Áreas de mi vida</Text>
-          <Text style={styles.heroSub}>Organiza y desglosa todo: empresa, familia, aprendizaje...</Text>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View>
+              <Text style={styles.heroTitle}>Áreas de mi vida</Text>
+              <Text style={styles.heroSub}>Ramas e ideas para tus proyectos</Text>
+            </View>
+            <TouchableOpacity
+              style={styles.toggleMode}
+              onPress={() => {
+                setViewMode(viewMode === 'list' ? 'map' : 'list');
+                if (viewMode === 'list') {
+                  // Expandir todo al entrar a modo mapa para mejor visualización
+                  const all = {};
+                  areas.forEach(a => all[a.id] = true);
+                  setExpanded(all);
+                }
+              }}
+            >
+              <Ionicons name={viewMode === 'list' ? 'share-social-outline' : 'list-outline'} size={20} color={COLORS.purple} />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {areas.length === 0 ? (
@@ -92,7 +111,7 @@ export default function AreasScreen({ navigation }) {
             actionLabel="Crear primera área"
             onAction={() => openAdd(null)}
           />
-        ) : (
+        ) : viewMode === 'list' ? (
           <View style={styles.tree}>
             {rows.map(({ node, depth, kids }) => (
               <View key={node.id} style={{ marginLeft: depth * 18 }}>
@@ -119,6 +138,36 @@ export default function AreasScreen({ navigation }) {
               </View>
             ))}
             <Text style={styles.tip}>Toca el + de cada rama para agregar sub-áreas · ⋮ para más opciones</Text>
+          </View>
+        ) : (
+          <View style={styles.mapContainer}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.mapInner}>
+                {areas.filter(a => !a.parentId).map(root => (
+                  <View key={root.id} style={styles.mapBranch}>
+                    <TouchableOpacity style={[styles.mapNode, { borderColor: root.color }]} onPress={() => setMenu(root)}>
+                      <Text style={styles.mapNodeTitle}>{root.name}</Text>
+                    </TouchableOpacity>
+                    <View style={styles.mapChildren}>
+                      {areas.filter(a => a.parentId === root.id).map(child => (
+                        <View key={child.id} style={styles.mapSubBranch}>
+                           <View style={[styles.mapLine, { backgroundColor: root.color }]} />
+                           <TouchableOpacity style={[styles.mapNode, styles.mapNodeChild, { borderColor: child.color }]} onPress={() => setMenu(child)}>
+                             <Text style={styles.mapNodeTitleSmall}>{child.name}</Text>
+                           </TouchableOpacity>
+                           {areas.filter(a => a.parentId === child.id).length > 0 && (
+                             <Text style={{ fontSize: 10, color: COLORS.textMuted, marginLeft: 10 }}>+ {areas.filter(a => a.parentId === child.id).length}</Text>
+                           )}
+                        </View>
+                      ))}
+                      <TouchableOpacity style={styles.mapAddBtn} onPress={() => openAdd(root.id)}>
+                        <Ionicons name="add" size={16} color={COLORS.purpleLight} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
           </View>
         )}
 
@@ -187,8 +236,20 @@ export default function AreasScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
+  mapContainer: { padding: 20 },
+  mapInner: { flexDirection: 'row', gap: 30 },
+  mapBranch: { gap: 15 },
+  mapNode: { backgroundColor: COLORS.card, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 14, borderWidth: 2, minWidth: 120, alignItems: 'center' },
+  mapNodeChild: { minWidth: 100, paddingVertical: 8 },
+  mapNodeTitle: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  mapNodeTitleSmall: { fontSize: 12, fontWeight: '600', color: COLORS.text },
+  mapChildren: { paddingLeft: 10, gap: 10 },
+  mapSubBranch: { flexDirection: 'row', alignItems: 'center' },
+  mapLine: { width: 15, height: 2, marginRight: 5 },
+  mapAddBtn: { width: 30, height: 30, borderRadius: 15, backgroundColor: COLORS.bg3, alignItems: 'center', justifyContent: 'center', marginTop: 5 },
   container: { paddingBottom: 10 },
   hero: { padding: 24, paddingTop: 56, backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4 },
+  toggleMode: { width: 44, height: 44, borderRadius: 12, backgroundColor: COLORS.purpleDim, alignItems: 'center', justifyContent: 'center' },
   heroTitle: { fontSize: 24, fontWeight: '800', color: COLORS.text },
   heroSub: { fontSize: 13, color: COLORS.purpleLight, marginTop: 4 },
   tree: { padding: 12 },

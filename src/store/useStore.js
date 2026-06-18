@@ -39,6 +39,7 @@ const DEFAULT_SETTINGS = {
   currency: 'PEN',
   secondaryCurrency: 'USD',
   themeMode: 'dark',
+  aiName: 'Asistente',
   customHabitCategories: [],
   customGastoCategories: [],    // categorías de gasto extra ['Streaming', ...]
   customIngresoCategories: [],  // categorías de ingreso extra ['Taxi', 'Arriendo', ...]
@@ -83,7 +84,7 @@ export const useStore = create((set, get) => ({
   settings: DEFAULT_SETTINGS,
   planning: DEFAULT_PLANNING,
   calendar: { events: [], objectives: [] },
-  finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [] },
+  finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], pendingFromNotifs: [] },
   areas: [], // árbol: [{ id, name, parentId, color, icon, linkedGoalId, linkedHabitId }]
   aiConversations: [],
 
@@ -213,7 +214,7 @@ export const useStore = create((set, get) => ({
       habitLogs: {},
       goals: [],
       planning: { schedule: null, activities: [], log: {}, dayPlans: {} },
-      finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], payments: [] },
+      finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], payments: [], pendingFromNotifs: [] },
       calendar: [],
       areas: [],
       settings: { currency: 'PEN', themeMode: 'dark', hiddenModules: [] },
@@ -277,6 +278,18 @@ export const useStore = create((set, get) => ({
     const settings = { ...get().settings, currency: code };
     set({ settings });
     await AsyncStorage.setItem('settings', JSON.stringify(settings));
+  },
+
+  // ─── PENDING NOTIFS ──────────────────────────────────
+  addPendingNotif: async (notif) => {
+    const f = get().finance;
+    const pending = [...(f.pendingFromNotifs || []), { id: Date.now().toString(), ...notif }];
+    await get()._saveFinance({ ...f, pendingFromNotifs: pending });
+  },
+  dismissPendingNotif: async (id) => {
+    const f = get().finance;
+    const pending = (f.pendingFromNotifs || []).filter(n => n.id !== id);
+    await get()._saveFinance({ ...f, pendingFromNotifs: pending });
   },
 
   // ─── PLANNING ────────────────────────────────────────────
@@ -555,21 +568,23 @@ export const useStore = create((set, get) => ({
   addAccount: async (acc) => {
     const f = get().finance;
     const a = { id: get()._fid(), balance: 0, currency: get().settings.currency, ...acc };
-    await get()._saveFinance({ ...f, accounts: [...f.accounts, a] });
+    let accounts = [...f.accounts, a];
+    // Si se crea vinculada, heredar saldo del padre
+    if (a.linkedTo) {
+      const parent = accounts.find(p => p.id === a.linkedTo);
+      if (parent) a.balance = parent.balance;
+    }
+    await get()._saveFinance({ ...f, accounts });
   },
   updateAccount: async (id, patch) => {
     const f = get().finance;
     let accounts = f.accounts.map(a => a.id === id ? { ...a, ...patch } : a);
     if (patch.balance != null) {
       const edited = accounts.find(a => a.id === id);
-      const newBalance = edited.balance;
-      // Encontrar el root del grupo (padre directo o el mismo si es padre)
       const rootId = edited.linkedTo || id;
-      // Sincronizar TODOS en el grupo al mismo balance (bidireccional)
-      accounts = accounts.map(a => {
-        if (a.id === rootId || a.linkedTo === rootId) return { ...a, balance: newBalance };
-        return a;
-      });
+      const newBalance = edited.balance;
+      // Sincronizar TODO el cluster (padre y todos sus hijos)
+      accounts = accounts.map(a => (a.id === rootId || a.linkedTo === rootId) ? { ...a, balance: newBalance } : a);
     } else {
       accounts = accounts.map(a => {
         if (!a.linkedTo) return a;
@@ -636,24 +651,33 @@ export const useStore = create((set, get) => ({
     const txCard = t.cardId ? f.cards.find(c => c.id === t.cardId) : null;
     const debitLinkedAccId = (txCard?.kind === 'debito' && txCard?.linkedTo) ? txCard.linkedTo : null;
 
+    // Identificar cuenta(s) a afectar y sus raíces para mantener sincronía
+    const getRootId = (accId) => {
+      if (!accId) return null;
+      const acc = f.accounts.find(a => a.id === accId);
+      return acc?.linkedTo || accId;
+    };
+
+    const targetAccId = t.accountId || debitLinkedAccId;
+    const targetRootId = getRootId(targetAccId);
+
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
         if (a.id === transferOriginRoot) return { ...a, balance: (a.balance || 0) - amt };
         if (a.id === transferDestRoot) return { ...a, balance: (a.balance || 0) + amt };
         return a;
       }
-      if (a.id === t.accountId) {
+      // Actualizamos siempre la RAÍZ del grupo vinculado
+      if (targetRootId && a.id === targetRootId) {
         return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? amt : -amt) };
-      }
-      if (debitLinkedAccId && a.id === debitLinkedAccId) {
-        return { ...a, balance: (a.balance || 0) - amt };
       }
       return a;
     });
-    // Cuentas vinculadas (hijas) espejo la cuenta padre
+
+    // Sincronizar todas las hijas con su padre
     accounts = accounts.map(a => {
       if (!a.linkedTo) return a;
-      const parent = accounts.find(x => x.id === a.linkedTo);
+      const parent = accounts.find(p => p.id === a.linkedTo);
       return parent ? { ...a, balance: parent.balance } : a;
     });
 
@@ -693,23 +717,24 @@ export const useStore = create((set, get) => ({
     const debitLinkedAccId = (txCard?.kind === 'debito' && txCard?.linkedTo) ? txCard.linkedTo : null;
     const delOriginRoot = t.type === 'transferencia' ? ((f.accounts.find(a => a.id === t.accountId) || {}).linkedTo || t.accountId) : null;
     const delDestRoot = t.type === 'transferencia' ? ((f.accounts.find(a => a.id === t.toAccountId) || {}).linkedTo || t.toAccountId) : null;
+
+    const targetAccId = t.accountId || debitLinkedAccId;
+    const targetRootId = targetAccId ? ((f.accounts.find(a => a.id === targetAccId) || {}).linkedTo || targetAccId) : null;
+
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
         if (a.id === delOriginRoot) return { ...a, balance: (a.balance || 0) + amt };
         if (a.id === delDestRoot) return { ...a, balance: (a.balance || 0) - amt };
         return a;
       }
-      if (a.id === t.accountId) {
+      if (targetRootId && a.id === targetRootId) {
         return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? -amt : amt) };
-      }
-      if (debitLinkedAccId && a.id === debitLinkedAccId) {
-        return { ...a, balance: (a.balance || 0) + amt };
       }
       return a;
     });
     accounts = accounts.map(a => {
       if (!a.linkedTo) return a;
-      const parent = accounts.find(x => x.id === a.linkedTo);
+      const parent = accounts.find(p => p.id === a.linkedTo);
       return parent ? { ...a, balance: parent.balance } : a;
     });
     let cards = t.cardId
@@ -741,10 +766,27 @@ export const useStore = create((set, get) => ({
     const newAccountId = patch.accountId !== undefined ? patch.accountId : old.accountId;
     const newToAccountId = patch.toAccountId !== undefined ? patch.toAccountId : old.toAccountId;
     const newCardId = patch.cardId !== undefined ? patch.cardId : old.cardId;
-    // Revert old effects on accounts
+
+    const getAccountRoot = (accId, cardId) => {
+      let finalAccId = accId;
+      if (!finalAccId && cardId) {
+        const card = f.cards.find(c => c.id === cardId);
+        if (card?.kind === 'debito' && card?.linkedTo) finalAccId = card.linkedTo;
+      }
+      if (!finalAccId) return null;
+      const acc = f.accounts.find(a => a.id === finalAccId);
+      return acc?.linkedTo || finalAccId;
+    };
+
+    const oldRootId = getAccountRoot(old.accountId, old.cardId);
+    const oldToRootId = getAccountRoot(old.toAccountId);
+    const newRootId = getAccountRoot(newAccountId, newCardId);
+    const newToRootId = getAccountRoot(newToAccountId);
+
+    // Revert old effects on accounts (always using roots)
     let accounts = f.accounts.map(a => {
-      if (a.id === old.accountId) return { ...a, balance: (a.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
-      if (old.type === 'transferencia' && a.id === old.toAccountId) return { ...a, balance: (a.balance || 0) - oldAmt };
+      if (oldRootId && a.id === oldRootId) return { ...a, balance: (a.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
+      if (old.type === 'transferencia' && oldToRootId && a.id === oldToRootId) return { ...a, balance: (a.balance || 0) - oldAmt };
       return a;
     });
     // Revert old effects on cards
@@ -752,14 +794,17 @@ export const useStore = create((set, get) => ({
       ? f.cards.map(c => {
           if (c.id !== old.cardId) return c;
           if (old.type === 'pago') return { ...c, used: (c.used || 0) + oldAmt };
-          if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) + oldAmt };
+          if (c.kind === 'debito') {
+            if (c.linkedTo) return c;
+            return { ...c, balance: (c.balance || 0) + oldAmt };
+          }
           return { ...c, used: Math.max(0, (c.used || 0) - oldAmt) };
         })
       : f.cards;
-    // Apply new effects on accounts
+    // Apply new effects on accounts (always using roots)
     accounts = accounts.map(a => {
-      if (a.id === newAccountId) return { ...a, balance: (a.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
-      if (newType === 'transferencia' && a.id === newToAccountId) return { ...a, balance: (a.balance || 0) + newAmt };
+      if (newRootId && a.id === newRootId) return { ...a, balance: (a.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
+      if (newType === 'transferencia' && newToRootId && a.id === newToRootId) return { ...a, balance: (a.balance || 0) + newAmt };
       return a;
     });
     // Apply new effects on cards
@@ -767,19 +812,22 @@ export const useStore = create((set, get) => ({
       cards = cards.map(c => {
         if (c.id !== newCardId) return c;
         if (newType === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - newAmt) };
-        if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) - newAmt };
+        if (c.kind === 'debito') {
+          if (c.linkedTo) return c;
+          return { ...c, balance: (c.balance || 0) - newAmt };
+        }
         return { ...c, used: (c.used || 0) + newAmt };
       });
     }
     // Sync linked accounts and cards
     accounts = accounts.map(a => {
       if (!a.linkedTo) return a;
-      const parent = accounts.find(x => x.id === a.linkedTo);
+      const parent = accounts.find(p => p.id === a.linkedTo);
       return parent ? { ...a, balance: parent.balance } : a;
     });
     cards = cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(x => x.id === c.linkedTo);
+      const parent = accounts.find(p => p.id === c.linkedTo);
       return parent ? { ...c, balance: parent.balance } : c;
     });
     const transactions = f.transactions.map(t => t.id === id ? { ...old, ...patch, id, amount: newAmt } : t);

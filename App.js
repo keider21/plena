@@ -73,13 +73,17 @@ export default function App() {
       } catch (e) { console.log('[App] Version check error:', e); }
     });
 
-    // Auto-sync con Supabase cuando hay sesión (cada 30 s)
+    // Auto-sync con Supabase cuando hay sesión (cada 5 min para ahorro de batería y rendimiento)
     const interval = setInterval(async () => {
       try {
         const { data } = await supabase.auth.getSession();
-        if (data?.session) await useStore.getState().syncAllToCloud().catch(() => {});
+        // Solo sincronizar si la app está siendo usada (no bloquear hilos críticos)
+        if (data?.session) {
+          console.log('[App] Iniciando sync en segundo plano...');
+          useStore.getState().syncAllToCloud().catch(() => {});
+        }
       } catch (e) {}
-    }, 30000);
+    }, 300000); // 5 minutos
 
     const sub = addResponseListener((resp) => {
       const data = resp?.notification?.request?.content?.data || {};
