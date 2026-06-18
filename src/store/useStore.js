@@ -4,8 +4,24 @@ import { format, subDays } from 'date-fns';
 import { formatMoney } from '../utils/currency';
 import { loanPending, OCCUPATIONS, CATEGORIES } from '../utils/finance';
 import { syncToFirebase, syncFromFirebase, auth } from '../utils/firebase';
+import { supabase } from '../utils/supabase';
+import { cloudSyncUp, cloudSyncDownAll, cloudCurrentUserId } from '../utils/cloud';
 
 const today = () => format(new Date(), 'yyyy-MM-dd');
+
+// Bloques de datos del usuario que se respaldan en la nube (Supabase)
+const CLOUD_KEYS = ['habits', 'habitLogs', 'goals', 'planning', 'finance', 'calendar', 'areas', 'settings', 'userProfile', 'aiConversations'];
+
+// Traduce errores de Supabase Auth a español legible
+function traduceAuthError(msg = '') {
+  const m = (msg || '').toLowerCase();
+  if (m.includes('already registered') || m.includes('already been registered')) return 'Ese correo ya está registrado. Inicia sesión.';
+  if (m.includes('password') && m.includes('6')) return 'La contraseña debe tener al menos 6 caracteres.';
+  if (m.includes('invalid login')) return 'Correo o contraseña incorrectos.';
+  if (m.includes('email') && (m.includes('valid') || m.includes('invalid'))) return 'Correo no válido.';
+  if (m.includes('confirm')) return 'Revisa tu correo para confirmar la cuenta.';
+  return msg || 'Error de autenticación';
+}
 
 const generateLast30Days = () => {
   const days = {};
@@ -74,32 +90,138 @@ export const useStore = create((set, get) => ({
   // UI
   loading: false,
 
-  // ─── AUTH ────────────────────────────────────────────────
+  // ─── AUTH (Supabase + fallback local sin conexión) ───────
+  _persistUser: async (user) => {
+    set({ currentUser: user });
+    await AsyncStorage.setItem('currentUser', JSON.stringify(user));
+  },
+  // Tras autenticar: si la nube tiene datos, restaura; si está vacía, sube los
+  // locales (migración la primera vez). Nunca bloquea el login si falla.
+  _postAuthSync: async () => {
+    try {
+      const { data } = await cloudSyncDownAll();
+      const hasCloud = data && Object.keys(data).length > 0;
+      if (hasCloud) await get().restoreFromCloud();
+      else await get().syncAllToCloud();
+    } catch (e) { /* no bloquear por fallo de sync */ }
+  },
+
   register: async (name, email, password) => {
+    // 1) Supabase (respaldo real en la nube)
+    try {
+      const { data, error } = await supabase.auth.signUp({ email, password, options: { data: { name } } });
+      if (!error && data?.session && data?.user) {
+        await get()._persistUser({ id: data.user.id, name, email, createdAt: today() });
+        await get()._postAuthSync();
+        return { success: true };
+      }
+      if (!error && data?.user && !data?.session) {
+        return { error: 'Revisa tu correo para confirmar la cuenta y luego inicia sesión.' };
+      }
+      if (error && !/network request failed|fetch|timeout/i.test(error.message || '')) {
+        return { error: traduceAuthError(error.message) };
+      }
+      // error de red → fallback local abajo
+    } catch (e) { /* offline → local */ }
+
+    // 2) Fallback local (sin conexión): no bloquear al usuario
     const { users } = get();
     if (users.find(u => u.email === email)) return { error: 'El correo ya existe' };
-    const hashedPwd = btoa(email + ':' + password); // simple hash con base64
-    const user = { id: Date.now().toString(), name, email, passwordHash: hashedPwd, createdAt: today() };
+    const user = { id: Date.now().toString(), name, email, passwordHash: btoa(email + ':' + password), createdAt: today() };
     const updated = [...users, user];
-    set({ users: updated, currentUser: user });
+    set({ users: updated });
     await AsyncStorage.setItem('users', JSON.stringify(updated));
-    await AsyncStorage.setItem('currentUser', JSON.stringify(user));
+    await get()._persistUser(user);
     return { success: true };
   },
 
   login: async (email, password) => {
-    const { users } = get();
-    const hashedPwd = btoa(email + ':' + password);
-    const user = users.find(u => u.email === email && u.passwordHash === hashedPwd);
-    if (!user) return { error: 'Correo o contraseña incorrectos' };
-    set({ currentUser: user });
-    await AsyncStorage.setItem('currentUser', JSON.stringify(user));
+    // 1) Supabase
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (!error && data?.session && data?.user) {
+        const name = data.user.user_metadata?.name || get().users.find(u => u.email === email)?.name || email.split('@')[0];
+        await get()._persistUser({ id: data.user.id, name, email, createdAt: today() });
+        await get()._postAuthSync();
+        return { success: true };
+      }
+      if (error && /network request failed|fetch|timeout/i.test(error.message || '')) {
+        // offline → fallback local
+      } else if (error) {
+        // Credenciales rechazadas por Supabase. ¿Cuenta local antigua? → migrarla.
+        const local = get().users.find(u => u.email === email && u.passwordHash === btoa(email + ':' + password));
+        if (local) {
+          const { data: su, error: se } = await supabase.auth.signUp({ email, password, options: { data: { name: local.name } } });
+          if (!se && su?.session && su?.user) {
+            await get()._persistUser({ ...local, id: su.user.id });
+            await get()._postAuthSync();
+            return { success: true };
+          }
+          await get()._persistUser(local); // no se pudo migrar → al menos entrar
+          return { success: true };
+        }
+        return { error: 'Correo o contraseña incorrectos' };
+      }
+    } catch (e) { /* offline → local */ }
+
+    // 2) Fallback local
+    const local = get().users.find(u => u.email === email && u.passwordHash === btoa(email + ':' + password));
+    if (!local) return { error: 'Correo o contraseña incorrectos' };
+    await get()._persistUser(local);
     return { success: true };
   },
 
   logout: async () => {
+    try { await supabase.auth.signOut(); } catch (e) {}
     set({ currentUser: null });
     await AsyncStorage.removeItem('currentUser');
+  },
+
+  deleteAllData: async () => {
+    try {
+      // 1) Borrar de Supabase
+      const id = await cloudCurrentUserId();
+      if (id) {
+        await Promise.all(CLOUD_KEYS.map(k =>
+          supabase.from('user_data').delete().eq('user_id', id).eq('key', k).catch(() => {})
+        ));
+      }
+    } catch (e) { console.log('[deleteAllData] error en Supabase:', e.message); }
+
+    try {
+      // 2) Borrar de Firebase (si hay sesión Google activa)
+      const fbUser = auth.currentUser;
+      if (fbUser?.uid) {
+        await Promise.all(CLOUD_KEYS.map(k =>
+          syncToFirebase(fbUser.uid, k, null).catch(() => {})
+        ));
+      }
+    } catch (e) { console.log('[deleteAllData] error en Firebase:', e.message); }
+
+    // 3) Limpiar AsyncStorage
+    await Promise.all(CLOUD_KEYS.map(k => AsyncStorage.removeItem(k)));
+    await AsyncStorage.removeItem('currentUser');
+    await AsyncStorage.removeItem('onboardingDone');
+    await AsyncStorage.removeItem('users');
+
+    // 4) Resetear store a estado inicial
+    set({
+      currentUser: null,
+      onboardingDone: false,
+      users: [],
+      habits: [],
+      habitLogs: {},
+      goals: [],
+      planning: { schedule: null, activities: [], log: {}, dayPlans: {} },
+      finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], payments: [] },
+      calendar: [],
+      areas: [],
+      settings: { currency: 'PEN', themeMode: 'dark', hiddenModules: [] },
+      userProfile: {},
+      aiConversations: [],
+    });
+
+    return { success: true };
   },
 
   // ─── PERSISTENCE ─────────────────────────────────────────
@@ -476,6 +598,21 @@ export const useStore = create((set, get) => ({
     const t = { id: get()._fid(), date: today(), ...tx };
     const amt = t.amount || 0;
 
+    // ── Transferencia: resolver la raíz de cada grupo vinculado y validar ──
+    // Las cuentas con linkedTo comparten saldo con su "padre" (root). Operar
+    // sobre la raíz evita que el espejo de vinculadas borre el movimiento.
+    let transferOriginRoot = null, transferDestRoot = null;
+    if (t.type === 'transferencia') {
+      const origin = f.accounts.find((a) => a.id === t.accountId);
+      const dest = f.accounts.find((a) => a.id === t.toAccountId);
+      if (!origin || !dest) return { error: 'Cuenta de transferencia no encontrada.' };
+      transferOriginRoot = origin.linkedTo || origin.id;
+      transferDestRoot = dest.linkedTo || dest.id;
+      if (transferOriginRoot === transferDestRoot) {
+        return { error: 'Esas cuentas comparten el mismo saldo (están vinculadas). Transferir entre ellas no movería dinero.' };
+      }
+    }
+
     // ── Validación de saldo: nunca permitir negativos imposibles ──
     if (t.type !== 'ingreso') {
       let available = null; let label = ''; let cur = get().settings.currency;
@@ -500,11 +637,13 @@ export const useStore = create((set, get) => ({
     const debitLinkedAccId = (txCard?.kind === 'debito' && txCard?.linkedTo) ? txCard.linkedTo : null;
 
     let accounts = f.accounts.map(a => {
+      if (t.type === 'transferencia') {
+        if (a.id === transferOriginRoot) return { ...a, balance: (a.balance || 0) - amt };
+        if (a.id === transferDestRoot) return { ...a, balance: (a.balance || 0) + amt };
+        return a;
+      }
       if (a.id === t.accountId) {
         return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? amt : -amt) };
-      }
-      if (t.type === 'transferencia' && a.id === t.toAccountId) {
-        return { ...a, balance: (a.balance || 0) + amt };
       }
       if (debitLinkedAccId && a.id === debitLinkedAccId) {
         return { ...a, balance: (a.balance || 0) - amt };
@@ -552,12 +691,16 @@ export const useStore = create((set, get) => ({
     const amt = t.amount || 0;
     const txCard = t.cardId ? f.cards.find(c => c.id === t.cardId) : null;
     const debitLinkedAccId = (txCard?.kind === 'debito' && txCard?.linkedTo) ? txCard.linkedTo : null;
+    const delOriginRoot = t.type === 'transferencia' ? ((f.accounts.find(a => a.id === t.accountId) || {}).linkedTo || t.accountId) : null;
+    const delDestRoot = t.type === 'transferencia' ? ((f.accounts.find(a => a.id === t.toAccountId) || {}).linkedTo || t.toAccountId) : null;
     let accounts = f.accounts.map(a => {
+      if (t.type === 'transferencia') {
+        if (a.id === delOriginRoot) return { ...a, balance: (a.balance || 0) + amt };
+        if (a.id === delDestRoot) return { ...a, balance: (a.balance || 0) - amt };
+        return a;
+      }
       if (a.id === t.accountId) {
         return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? -amt : amt) };
-      }
-      if (t.type === 'transferencia' && a.id === t.toAccountId) {
-        return { ...a, balance: (a.balance || 0) - amt };
       }
       if (debitLinkedAccId && a.id === debitLinkedAccId) {
         return { ...a, balance: (a.balance || 0) + amt };
@@ -956,7 +1099,36 @@ export const useStore = create((set, get) => ({
     return h;
   },
 
-  // ─── FIREBASE SYNC ───────────────────────
+  // ─── SUPABASE SYNC (nube actual) ─────────────────────────
+  // Sube todos los bloques del usuario a Supabase (gated por sesión).
+  syncAllToCloud: async () => {
+    try {
+      const id = await cloudCurrentUserId();
+      if (!id) return { error: 'sin sesión' };
+      const s = get();
+      await Promise.all(CLOUD_KEYS.map((k) => cloudSyncUp(k, s[k])));
+      return { error: null };
+    } catch (e) { return { error: e.message }; }
+  },
+  // Descarga todos los bloques desde Supabase y los PERSISTE en disco (clave: que
+  // sobrevivan al reinicio en frío, no solo en memoria).
+  restoreFromCloud: async () => {
+    try {
+      const { data, error } = await cloudSyncDownAll();
+      if (error || !data) return { error };
+      const updates = {};
+      for (const k of CLOUD_KEYS) if (data[k] != null) updates[k] = data[k];
+      await Promise.all(Object.entries(updates).map(([k, v]) => AsyncStorage.setItem(k, JSON.stringify(v))));
+      if (updates.userProfile && Object.keys(updates.userProfile).length > 0) {
+        updates.onboardingDone = true;
+        await AsyncStorage.setItem('onboardingDone', 'true');
+      }
+      set(updates);
+      return { error: null };
+    } catch (e) { return { error: e.message }; }
+  },
+
+  // ─── FIREBASE SYNC (legado, en desuso tras migrar a Supabase) ──
   syncAllToFirebase: async (userId) => {
     if (!userId) return { error: 'No user ID' };
     const state = get();

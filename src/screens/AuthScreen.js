@@ -48,8 +48,7 @@ export default function AuthScreen() {
       setLoading(false);
       return;
     }
-    // Restaurar todos los datos desde Firebase (si el usuario los tenía guardados)
-    await store.syncFromFirebase(user.uid);
+    // El respaldo/restauración ahora lo maneja Supabase dentro de login/register.
     setLoading(false);
   };
 

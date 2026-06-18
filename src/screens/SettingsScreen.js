@@ -347,6 +347,57 @@ export default function SettingsScreen({ navigation }) {
           ))}
         </View>
 
+        {/* ─── ZONA PELIGRO: Borrar todos los datos ────── */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View style={[styles.sectionIconWrap, { backgroundColor: COLORS.redDim }]}>
+              <Ionicons name="trash-outline" size={18} color={COLORS.red} />
+            </View>
+            <Text style={[styles.sectionTitle, { color: COLORS.red }]}>Zona de peligro</Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.deleteBtn, { marginTop: 8 }]}
+            activeOpacity={0.8}
+            onPress={() => {
+              Alert.alert(
+                '⚠️ Borrar TODOS los datos',
+                '¿Estás seguro? Se borrarán TODOS tus datos de prueba de Supabase y AsyncStorage. Esta acción NO se puede deshacer.',
+                [
+                  { text: 'Cancelar' },
+                  {
+                    text: 'Sí, borrar TODO',
+                    style: 'destructive',
+                    onPress: () => {
+                      Alert.alert(
+                        '🚨 CONFIRMACIÓN FINAL',
+                        'Esto REALMENTE va a borrar todo. ¿Confirmas?',
+                        [
+                          { text: 'No, cancelar' },
+                          {
+                            text: '✋ SÍ, BORRAR TODO AHORA',
+                            style: 'destructive',
+                            onPress: async () => {
+                              await store.deleteAllData();
+                              Alert.alert('✅ Hecho', 'Todos tus datos fueron borrados. La app se reiniciará en el login.');
+                              navigation.navigate('Main');
+                            }
+                          }
+                        ]
+                      );
+                    }
+                  }
+                ]
+              );
+            }}
+          >
+            <Ionicons name="trash" size={16} color={COLORS.white} />
+            <Text style={styles.deleteBtnText}>Borrar todos mis datos</Text>
+          </TouchableOpacity>
+          <Text style={[styles.hint, { color: COLORS.red, marginTop: 8 }]}>
+            ⚠️ Se eliminarán finanzas, hábitos, metas, horarios, conversaciones IA y todo lo que hayas guardado. No se puede deshacer.
+          </Text>
+        </View>
+
         <View style={{ height: 40 }} />
       </ScrollView>
 
@@ -498,4 +549,6 @@ const styles = StyleSheet.create({
   sheetCancelTxt: { color: COLORS.textSub, fontSize: 15, fontWeight: '600' },
   sheetConfirm: { flex: 1, paddingVertical: 13, borderRadius: 12, backgroundColor: COLORS.purple, alignItems: 'center' },
   sheetConfirmTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  deleteBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 13, backgroundColor: COLORS.red, borderRadius: 12 },
+  deleteBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

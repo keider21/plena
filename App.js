@@ -11,10 +11,10 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { format } from 'date-fns';
 import { auth, checkLatestVersion, initializeGoogleSignIn } from './src/utils/firebase';
+import { supabase } from './src/utils/supabase';
 import { useStore } from './src/store/useStore';
 import { Alert } from 'react-native';
-import { setupNotifications, rescheduleAll, snooze, addResponseListener } from './src/utils/notifications';
-import { placementsByDay } from './src/utils/timeOrganizer';
+import { setupNotifications, reschedulePlan, snooze, addResponseListener, startKeepAliveService } from './src/utils/notifications';
 import { installCrashHandler, installPromiseHandler, getLastCrash } from './src/utils/crashReporter';
 import CrashScreen from './src/components/CrashScreen';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -47,12 +47,8 @@ export default function App() {
       try {
         const s = useStore.getState();
         await setupNotifications();
-        await rescheduleAll({
-          habits: s.habits,
-          schedule: s.planning.schedule,
-          activities: s.planning.activities,
-          placementsByDay: s.planning.schedule ? placementsByDay(s.planning.schedule, s.planning.activities) : null,
-        });
+        startKeepAliveService(); // mantiene la app viva (anti force-stop en Honor/Huawei)
+        await reschedulePlan(s.planning, s.habits);
       } catch (e) { console.error('[App] Notifications init error:', e); }
 
       // Check for app updates
@@ -77,14 +73,13 @@ export default function App() {
       } catch (e) { console.log('[App] Version check error:', e); }
     });
 
-    // Auto-sync con Firebase cuando hay cambios
+    // Auto-sync con Supabase cuando hay sesión (cada 30 s)
     const interval = setInterval(async () => {
-      const user = auth.currentUser;
-      if (user) {
-        const { syncAllToFirebase } = useStore.getState();
-        await syncAllToFirebase(user.uid).catch(() => {});
-      }
-    }, 30000); // Sync cada 30 segundos
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (data?.session) await useStore.getState().syncAllToCloud().catch(() => {});
+      } catch (e) {}
+    }, 30000);
 
     const sub = addResponseListener((resp) => {
       const data = resp?.notification?.request?.content?.data || {};
