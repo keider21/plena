@@ -14,6 +14,7 @@ Hemos sentado las bases para una experiencia **Premium** y un sistema libre de e
 *   **Mapa Mental de Áreas:** Evolucionamos la lista de ideas a una vista de mapa mental simplificada para que puedas ver cómo tus proyectos se ramifican.
 *   **Infraestructura de Notificaciones:** Preparado el sistema para leer notificaciones de Yape/Plin y sugerir registros automáticos al entrar a la app.
 *   **Rendimiento Optimizado:** La sincronización con la nube (Supabase) ahora ocurre en segundo plano cada 5 minutos, evitando que la app se trabe al cerrar sesión o registrar muchos datos.
+*   **Herramienta de Consistencia de Datos:** Implementamos una función de "Reconciliación" que reconstruye los saldos bancarios desde cero basándose en el historial. Esto asegura que tus cuentas siempre cuadren, incluso si hubo errores en el pasado.
 
 ---
 

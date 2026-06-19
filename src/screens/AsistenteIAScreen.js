@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform, Modal as RNModal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -613,25 +613,27 @@ export default function AsistenteIAScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      <Modal visible={namingModal} transparent animationType="fade">
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Nombra a tu asistente</Text>
-            <Text style={styles.modalSub}>¿Cómo te gustaría llamar a tu copiloto inteligente? Puedes cambiarlo después.</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={newName}
-              onChangeText={setNewName}
-              placeholder="Ej. Jarvis, Aura, Mentor..."
-              placeholderTextColor={COLORS.textMuted}
-              autoFocus
-            />
-            <TouchableOpacity style={styles.modalBtn} onPress={saveAiName}>
-              <Text style={styles.modalBtnText}>Guardar nombre</Text>
-            </TouchableOpacity>
+      {RNModal && (
+        <RNModal visible={namingModal} transparent animationType="fade">
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalSheet}>
+              <Text style={styles.modalTitle}>Nombra a tu asistente</Text>
+              <Text style={styles.modalSub}>¿Cómo te gustaría llamar a tu copiloto inteligente? Puedes cambiarlo después.</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={newName}
+                onChangeText={setNewName}
+                placeholder="Ej. Jarvis, Aura, Mentor..."
+                placeholderTextColor={COLORS.textMuted}
+                autoFocus
+              />
+              <TouchableOpacity style={styles.modalBtn} onPress={saveAiName}>
+                <Text style={styles.modalBtnText}>Guardar nombre</Text>
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </Modal>
+        </RNModal>
+      )}
     </View>
   );
 }

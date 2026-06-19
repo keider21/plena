@@ -12,7 +12,7 @@ import { computePoints, levelFor, progressToNext, LEVELS } from '../utils/levels
 
 export default function ProfileScreen({ navigation }) {
   const store = useStore();
-  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance } = store;
+  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance, reconcileAccounts } = store;
   const [changelog, setChangelog] = useState(false);
   const points = useMemo(() => computePoints(store), [
     store.habits, store.habitLogs, store.finance?.transactions, store.planning?.dayPlans,
@@ -65,6 +65,18 @@ export default function ProfileScreen({ navigation }) {
       items: [
         { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
         { icon: 'terminal-outline', label: 'Logs de desarrollo', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
+        {
+          icon: 'build-outline',
+          label: 'Reparar saldos bancarios',
+          color: COLORS.amber,
+          onPress: () => Alert.alert('Reparar', '¿Recalcular saldos basándose en tu historial de movimientos? Úsalo si los saldos de tus cuentas no cuadran.', [
+            { text: 'Cancelar' },
+            { text: 'Reparar ahora', onPress: async () => {
+              await reconcileAccounts();
+              Alert.alert('¡Listo!', 'Los saldos han sido reconciliados.');
+            }}
+          ])
+        },
       ]
     }
   ];

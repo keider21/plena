@@ -142,23 +142,29 @@ export default function DashboardScreen({ navigation }) {
 
       <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('Finanzas')} style={styles.balanceCard}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={styles.balanceLbl}>Saldo de cuentas</Text>
+          <Text style={styles.balanceLbl}>Dinero disponible</Text>
           <View style={[styles.balanceTrend, { backgroundColor: (realBalance >= 0 ? COLORS.greenDim : COLORS.redDim) }]}>
-            <Ionicons name={realBalance >= 0 ? 'trending-up' : 'trending-down'} size={16} color={realBalance >= 0 ? COLORS.green : COLORS.red} />
+            <Ionicons name={realBalance >= 0 ? 'wallet-outline' : 'warning-outline'} size={16} color={realBalance >= 0 ? COLORS.green : COLORS.red} />
           </View>
         </View>
-        <Text style={[styles.balanceVal, { color: realBalance >= 0 ? COLORS.green : COLORS.red }]}
+        <Text style={[styles.balanceVal, { color: realBalance >= 0 ? COLORS.text : COLORS.red }]}
           numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
-          {realBalance >= 0 ? '+' : ''}{formatMoney(realBalance, cur)}
+          {formatMoney(realBalance, cur)}
         </Text>
-        <View style={{ flexDirection: 'row', gap: 16, marginTop: 10 }}>
-          <View style={styles.balanceSubChip}>
-            <Text style={[styles.balanceSubAmt, { color: COLORS.green }]}>↑ {formatMoney(finance.ingresos, cur)}</Text>
-            <Text style={styles.balanceSubLbl}>ingresos mes</Text>
+        <View style={styles.balanceDivider} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View>
+              <Text style={[styles.miniStatLbl, { color: COLORS.green }]}>INGRESOS</Text>
+              <Text style={styles.miniStatVal}>{formatMoney(finance.ingresos, cur)}</Text>
+            </View>
+            <View>
+              <Text style={[styles.miniStatLbl, { color: COLORS.red }]}>GASTOS</Text>
+              <Text style={styles.miniStatVal}>{formatMoney(finance.gastos, cur)}</Text>
+            </View>
           </View>
-          <View style={styles.balanceSubChip}>
-            <Text style={[styles.balanceSubAmt, { color: COLORS.red }]}>↓ {formatMoney(finance.gastos, cur)}</Text>
-            <Text style={styles.balanceSubLbl}>gastos mes</Text>
+          <View style={styles.balanceBadge}>
+             <Text style={styles.balanceBadgeText}>Este mes</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -422,9 +428,11 @@ const styles = StyleSheet.create({
   balanceLbl: { fontSize: 11, color: COLORS.textSub, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   balanceTrend: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   balanceVal: { fontSize: 36, fontWeight: '800', marginTop: 6, letterSpacing: -1 },
-  balanceSubChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: COLORS.bg3 },
-  balanceSubAmt: { fontSize: 13, fontWeight: '700' },
-  balanceSubLbl: { fontSize: 11, color: COLORS.textSub, fontWeight: '600' },
+  balanceDivider: { height: 1, backgroundColor: COLORS.border + '44', marginVertical: 14 },
+  miniStatLbl: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
+  miniStatVal: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  balanceBadge: { backgroundColor: COLORS.purpleDim, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  balanceBadgeText: { fontSize: 10, color: COLORS.purple, fontWeight: '800', textTransform: 'uppercase' },
 
   // ── Secciones ───────────────────────────────────────────────────────────────
   section: { paddingHorizontal: 16, paddingTop: 20 },

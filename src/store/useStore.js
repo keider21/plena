@@ -39,7 +39,7 @@ const DEFAULT_SETTINGS = {
   currency: 'PEN',
   secondaryCurrency: 'USD',
   themeMode: 'dark',
-  aiName: 'Asistente',
+  aiName: null,
   customHabitCategories: [],
   customGastoCategories: [],    // categorías de gasto extra ['Streaming', ...]
   customIngresoCategories: [],  // categorías de ingreso extra ['Taxi', 'Arriendo', ...]
@@ -247,8 +247,40 @@ export const useStore = create((set, get) => ({
         AsyncStorage.getItem('areas'),
         AsyncStorage.getItem('aiConversations'),
       ]);
-      const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [] };
+      const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], pendingFromNotifs: [] };
       const savedPlanning = planningRaw ? JSON.parse(planningRaw) : null;
+
+      let parsedFinance = financeRaw ? { ...emptyFinance, ...JSON.parse(financeRaw) } : emptyFinance;
+
+      // Migración y auto-reparación de saldos al cargar
+      if (parsedFinance.accounts.length > 0) {
+        const accounts = [...parsedFinance.accounts];
+
+        // 1. Asegurar que todas las cuentas tengan un initialBalance (migración de datos viejos)
+        accounts.forEach(a => {
+          if (a.initialBalance === undefined) a.initialBalance = a.balance || 0;
+        });
+
+        // 2. Sincronizar hijos con padres
+        accounts.forEach(a => {
+          if (a.linkedTo) {
+            const parent = accounts.find(p => p.id === a.linkedTo);
+            if (parent) a.balance = parent.balance;
+          }
+        });
+        parsedFinance.accounts = accounts;
+
+        // 3. También tarjetas de débito
+        parsedFinance.cards = (parsedFinance.cards || []).map(c => {
+          if (c.initialBalance === undefined) c.initialBalance = c.balance || 0;
+          if (c.kind === 'debito' && c.linkedTo) {
+            const parent = accounts.find(p => p.id === c.linkedTo);
+            if (parent) return { ...c, balance: parent.balance };
+          }
+          return c;
+        });
+      }
+
       set({
         users: usersRaw ? JSON.parse(usersRaw) : [],
         currentUser: userRaw ? JSON.parse(userRaw) : null,
@@ -265,7 +297,7 @@ export const useStore = create((set, get) => ({
         calendar: calendarRaw
           ? { events: JSON.parse(calendarRaw).events || [], objectives: JSON.parse(calendarRaw).objectives || [] }
           : { events: [], objectives: [] },
-        finance: financeRaw ? { ...emptyFinance, ...JSON.parse(financeRaw) } : emptyFinance,
+        finance: parsedFinance,
         areas: areasRaw ? JSON.parse(areasRaw) : [],
         aiConversations: aiConvRaw ? JSON.parse(aiConvRaw) : [],
       });
@@ -290,6 +322,76 @@ export const useStore = create((set, get) => ({
     const f = get().finance;
     const pending = (f.pendingFromNotifs || []).filter(n => n.id !== id);
     await get()._saveFinance({ ...f, pendingFromNotifs: pending });
+  },
+
+  // Reconciliación: reconstruye saldos desde cero basándose en transacciones
+  reconcileAccounts: async () => {
+    const f = get().finance;
+    // Ordenar cronológicamente para reconstruir la historia
+    const txs = [...(f.transactions || [])].sort((a, b) => {
+      const da = (a.date || '0000-00-00') + (a.time || '00:00');
+      const db = (b.date || '0000-00-00') + (b.time || '00:00');
+      return da.localeCompare(db);
+    });
+
+    // Resetear saldos al valor inicial. Si no existe initialBalance (cuentas viejas),
+    // asumimos que el saldo actual es el correcto para empezar la cuenta.
+    let accounts = f.accounts.map(a => ({ ...a, balance: a.initialBalance ?? a.balance ?? 0 }));
+    let cards = f.cards.map(c => ({ ...c, used: 0, balance: c.initialBalance ?? c.balance ?? 0 }));
+
+    const getRootId = (accId, cardId) => {
+      let finalAccId = accId;
+      if (!finalAccId && cardId) {
+        const card = f.cards.find(x => x.id === cardId);
+        if (card?.kind === 'debito' && card?.linkedTo) finalAccId = card.linkedTo;
+      }
+      if (!finalAccId) return null;
+      const acc = f.accounts.find(a => a.id === finalAccId);
+      return acc?.linkedTo || finalAccId;
+    };
+
+    for (const t of txs) {
+      const amt = t.amount || 0;
+      const rootId = getRootId(t.accountId, t.cardId);
+      const toRootId = getRootId(t.toAccountId);
+
+      // Aplicar a cuentas
+      accounts = accounts.map(a => {
+        if (rootId && a.id === rootId) {
+          if (t.type === 'ingreso') return { ...a, balance: a.balance + amt };
+          if (t.type === 'gasto' || t.type === 'transferencia' || t.type === 'pago') return { ...a, balance: a.balance - amt };
+        }
+        if (t.type === 'transferencia' && toRootId && a.id === toRootId) {
+          return { ...a, balance: a.balance + amt };
+        }
+        return a;
+      });
+
+      // Aplicar a tarjetas
+      if (t.cardId) {
+        cards = cards.map(c => {
+          if (c.id !== t.cardId) return c;
+          if (t.type === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - amt) };
+          if (c.kind === 'debito') return c; // balance viene de cuenta
+          return { ...c, used: (c.used || 0) + amt };
+        });
+      }
+    }
+
+    // Sincronizar hijos
+    accounts = accounts.map(a => {
+      if (!a.linkedTo) return a;
+      const parent = accounts.find(p => p.id === a.linkedTo);
+      return parent ? { ...a, balance: parent.balance } : a;
+    });
+    cards = cards.map(c => {
+      if (!c.linkedTo || c.kind !== 'debito') return c;
+      const parent = accounts.find(p => p.id === c.linkedTo);
+      return parent ? { ...c, balance: parent.balance } : c;
+    });
+
+    await get()._saveFinance({ ...f, accounts, cards });
+    return { success: true };
   },
 
   // ─── PLANNING ────────────────────────────────────────────
@@ -567,7 +669,7 @@ export const useStore = create((set, get) => ({
 
   addAccount: async (acc) => {
     const f = get().finance;
-    const a = { id: get()._fid(), balance: 0, currency: get().settings.currency, ...acc };
+    const a = { id: get()._fid(), balance: 0, initialBalance: acc.balance || 0, currency: get().settings.currency, ...acc };
     let accounts = [...f.accounts, a];
     // Si se crea vinculada, heredar saldo del padre
     if (a.linkedTo) {
@@ -665,6 +767,11 @@ export const useStore = create((set, get) => ({
       if (t.type === 'transferencia') {
         if (a.id === transferOriginRoot) return { ...a, balance: (a.balance || 0) - amt };
         if (a.id === transferDestRoot) return { ...a, balance: (a.balance || 0) + amt };
+        return a;
+      }
+      // Si el movimiento es un pago de tarjeta, también se resta de la cuenta de origen
+      if (t.type === 'pago') {
+        if (a.id === targetRootId) return { ...a, balance: (a.balance || 0) - amt };
         return a;
       }
       // Actualizamos siempre la RAÍZ del grupo vinculado
@@ -837,7 +944,7 @@ export const useStore = create((set, get) => ({
 
   addCard: async (card) => {
     const f = get().finance;
-    await get()._saveFinance({ ...f, cards: [...f.cards, { id: get()._fid(), currency: get().settings.currency, ...card }] });
+    await get()._saveFinance({ ...f, cards: [...f.cards, { id: get()._fid(), initialBalance: card.balance || 0, currency: get().settings.currency, ...card }] });
   },
   updateCard: async (id, patch) => {
     const f = get().finance;
