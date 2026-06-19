@@ -29,3 +29,5 @@ npm-debug.*
 # IDE
 .idea/
 .vscode/
+
+android/local.properties
