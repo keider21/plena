@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform, Modal as RNModal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, TextInput, Alert, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
@@ -196,8 +196,12 @@ function buildAnswer(input, store) {
         'casa': ['Ahorrar para la cuota inicial', 'Investigar zonas y precios', 'Verificar historial crediticio', 'Contactar agentes inmobiliarios'],
         'carro': ['Ahorrar para el adelanto', 'Elegir modelo y marca', 'Comparar seguros', 'Tramitar licencia de conducir'],
         'ingles': ['Hacer examen de nivel', 'Inscribirse en curso o app', 'Practicar 30 min diarios', 'Ver películas en inglés'],
+        'idioma': ['Elegir el idioma a aprender', 'Inscribirse en un curso o app', 'Practicar 20 min diarios', 'Escuchar música o podcast en ese idioma'],
         'negocio': ['Definir modelo de negocio', 'Hacer plan financiero', 'Buscar proveedores', 'Crear redes sociales'],
-        'estudiar': ['Elegir carrera o curso', 'Investigar universidades', 'Organizar horarios', 'Preparar presupuesto'],
+        'estudiar': ['Elegir carrera o curso', 'Investigar instituciones', 'Organizar horarios de estudio', 'Preparar presupuesto para matrícula'],
+        'viaje': ['Elegir destino y fecha', 'Presupuestar pasajes y hotel', 'Ahorrar mensualmente para el viaje', 'Investigar actividades en el destino'],
+        'salud': ['Hacerse un chequeo general', 'Mejorar la alimentación diaria', 'Hacer ejercicio 3 veces por semana', 'Dormir al menos 7 horas'],
+        'ahorro': ['Definir monto objetivo', 'Analizar gastos innecesarios', 'Automatizar ahorro mensual', 'Revisar progreso cada semana'],
       };
 
       let foundKey = Object.keys(suggestions).find(k => target.toLowerCase().includes(k));
@@ -613,27 +617,25 @@ export default function AsistenteIAScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {RNModal && (
-        <RNModal visible={namingModal} transparent animationType="fade">
-          <View style={styles.modalBackdrop}>
-            <View style={styles.modalSheet}>
-              <Text style={styles.modalTitle}>Nombra a tu asistente</Text>
-              <Text style={styles.modalSub}>¿Cómo te gustaría llamar a tu copiloto inteligente? Puedes cambiarlo después.</Text>
-              <TextInput
-                style={styles.modalInput}
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="Ej. Jarvis, Aura, Mentor..."
-                placeholderTextColor={COLORS.textMuted}
-                autoFocus
-              />
-              <TouchableOpacity style={styles.modalBtn} onPress={saveAiName}>
-                <Text style={styles.modalBtnText}>Guardar nombre</Text>
-              </TouchableOpacity>
-            </View>
+      <Modal visible={namingModal} transparent animationType="fade" onRequestClose={() => setNamingModal(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalSheet}>
+            <Text style={styles.modalTitle}>Nombra a tu asistente</Text>
+            <Text style={styles.modalSub}>¿Cómo te gustaría llamar a tu copiloto inteligente? Puedes cambiarlo después.</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Ej. Jarvis, Aura, Mentor..."
+              placeholderTextColor={COLORS.textMuted}
+              autoFocus
+            />
+            <TouchableOpacity style={styles.modalBtn} onPress={saveAiName}>
+              <Text style={styles.modalBtnText}>Guardar nombre</Text>
+            </TouchableOpacity>
           </View>
-        </RNModal>
-      )}
+        </View>
+      </Modal>
     </View>
   );
 }

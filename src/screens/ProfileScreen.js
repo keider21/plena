@@ -57,14 +57,6 @@ export default function ProfileScreen({ navigation }) {
       items: [
         { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.blue, onPress: () => navigation.navigate('Permisos') },
         { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
-        { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan localmente y se sincronizan de forma segura con tu cuenta de Supabase.') },
-      ]
-    },
-    {
-      title: 'Soporte y Sistema',
-      items: [
-        { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
-        { icon: 'terminal-outline', label: 'Logs de desarrollo', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
         {
           icon: 'build-outline',
           label: 'Reparar saldos bancarios',
@@ -77,6 +69,14 @@ export default function ProfileScreen({ navigation }) {
             }}
           ])
         },
+        { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan localmente y se sincronizan de forma segura con tu cuenta de Supabase.') },
+      ]
+    },
+    {
+      title: 'Soporte y Sistema',
+      items: [
+        { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
+        { icon: 'terminal-outline', label: 'Logs de desarrollo', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
       ]
     }
   ];
@@ -87,7 +87,7 @@ export default function ProfileScreen({ navigation }) {
       <View style={styles.header}>
         <View style={styles.avatarArea}>
           <View style={[styles.avatar, { backgroundColor: COLORS.purple }]}>
-            <Text style={styles.avatarText}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
+            <Text style={[styles.avatarText, { color: '#fff' }]}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
           </View>
           <Text style={styles.userName}>{currentUser?.name}</Text>
           <Text style={styles.userEmail}>{currentUser?.email}</Text>

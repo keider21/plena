@@ -1,61 +1,50 @@
-# 🚀 Estrategia de Crecimiento y Escalabilidad — Vida Plena
+# Estrategia de Escalabilidad - Vida Plena 🪶
 
-Este documento detalla el plan para transformar Vida Plena de una aplicación personal a una plataforma comercial robusta capaz de soportar miles de usuarios.
+Este documento detalla el plan para escalar la aplicación desde un prototipo funcional a una plataforma robusta capaz de manejar miles de usuarios y grandes volúmenes de datos.
 
----
+## 1. Evolución de la Base de Datos (Supabase)
 
-## 1. 🛠️ Mejoras Realizadas (Fase 1)
+Actualmente, la app utiliza un modelo de **almacenamiento Key-Value** simplificado en la tabla `user_data`.
 
-Hemos sentado las bases para una experiencia **Premium** y un sistema libre de errores:
+### Situación Actual:
+- Toda la información de un módulo (ej. `finance`) se guarda como un solo objeto JSON.
+- **Limitación:** Al crecer el número de transacciones, el objeto JSON se vuelve pesado, ralentizando la sincronización y dificultando consultas complejas o reportes avanzados desde el servidor.
 
-*   **Sincronización Inteligente de Cuentas:** Se solucionó el "caos" de vinculación. Ahora, si vinculas Yape a BCP (o cualquier otra cuenta), el saldo se mantiene idéntico en todo el "clúster" de forma automática.
-*   **Claridad Financiera:** Separamos el **Saldo Líquido** (tu dinero real hoy) del **Patrimonio** (que incluye deudas y préstamos). El usuario ahora ve primero lo que realmente tiene para gastar.
-*   **Asistente IA con Personalidad:** Ahora puedes ponerle nombre a tu IA. Además, implementamos un sistema de **"Confirmación de Acción"** para que no guarde nada sin que tú lo revises primero.
-*   **Mapa Mental de Áreas:** Evolucionamos la lista de ideas a una vista de mapa mental simplificada para que puedas ver cómo tus proyectos se ramifican.
-*   **Infraestructura de Notificaciones:** Preparado el sistema para leer notificaciones de Yape/Plin y sugerir registros automáticos al entrar a la app.
-*   **Rendimiento Optimizado:** La sincronización con la nube (Supabase) ahora ocurre en segundo plano cada 5 minutos, evitando que la app se trabe al cerrar sesión o registrar muchos datos.
-*   **Herramienta de Consistencia de Datos:** Implementamos una función de "Reconciliación" que reconstruye los saldos bancarios desde cero basándose en el historial. Esto asegura que tus cuentas siempre cuadren, incluso si hubo errores en el pasado.
+### Propuesta a Mediano Plazo:
+Migrar a un esquema **Relacional Puro**:
+1. **Tablas Específicas:** Crear tablas para `transactions`, `accounts`, `habits`, `goals`, etc.
+2. **Consultas Eficientes:** Permitir que la app descargue solo los últimos 30 días de transacciones al iniciar, y cargue el resto bajo demanda (pagination).
+3. **Integridad Referencial:** Evitar que queden "transacciones huérfanas" si se borra una cuenta.
 
----
+## 2. Optimización del Desempeño (Frontend)
 
-## 2. 📈 Plan de Escalabilidad (Para más usuarios)
+### Gestión de Estado:
+- **Zustand Selectors:** Actualmente algunos componentes escuchan todo el store. Debemos refactorizar para usar selectores específicos:
+  `const balance = useStore(state => state.finance.balance);`
+  Esto evita re-renders innecesarios en pantallas grandes como el Dashboard.
 
-Para pasar de 5 usuarios a 5,000, seguiremos este camino:
+### Sincronización Inteligente:
+- **Diff-based Sync:** En lugar de subir todo el bloque de finanzas cada 5 minutos, implementar un sistema que solo envíe los cambios realizados (delta sync).
+- **Background Tasks:** Utilizar `expo-task-manager` para asegurar que los registros pendientes se suban incluso si el usuario cierra la app abruptamente.
 
-### Infraestructura (Supabase)
-*   **De Bloques JSON a Tablas Relacionales:** Actualmente guardamos todo en "bloques" (ej. todas las finanzas juntas). Cuando un usuario tenga 2,000 movimientos, esto será lento. El siguiente paso es crear una tabla para `transacciones`, otra para `habitos`, etc. Esto permitirá que la app solo descargue lo nuevo, no todo el historial cada vez.
-*   **Base de Datos en Tiempo Real:** Habilitar el "Realtime" de Supabase para que si el usuario abre la app en dos teléfonos, los cambios se vean al instante sin esperar 5 minutos.
+## 3. Escalabilidad de la IA (Cerebro de la App)
 
-### Membresías y Pagos
-*   **Integración con Stripe o RevenueCat:** Implementar una pasarela de pago para gestionar suscripciones mensuales/anuales de forma automática.
-*   **Niveles de Acceso:** Crear un rol de "Premium" que desbloquee funciones como la IA avanzada o exportaciones detalladas.
+### Transición a LLM en la Nube:
+Actualmente, el asistente usa lógica basada en reglas y regex local (`buildAnswer`). Para escalar:
+1. **Edge Functions (Supabase):** Mover la lógica de procesamiento de lenguaje natural a funciones de Supabase.
+2. **Contexto Dinámico:** Enviar al modelo un resumen del perfil del usuario (metas, balance actual, hábitos pendientes) para que los consejos sean 100% personalizados.
+3. **Costo-Eficiencia:** Usar modelos como `gpt-4o-mini` o `Llama 3` vía API para mantener costos bajos mientras se ofrece una experiencia de "IA Real".
 
----
+## 4. UX/UI y Retención
 
-## 3. 🤖 Estrategia de IA (Eficiencia y Costos)
+### Gamificación Avanzada:
+- Expandir el sistema de niveles (`levels.js`) con recompensas visuales, medallas compartibles y desafíos semanales entre amigos.
+- **Mind Map de Áreas:** Mejorar la visualización de la pestaña Áreas para que se sienta como una herramienta de pensamiento visual profesional.
 
-Para que la IA sea inteligente pero barata:
+## 5. Infraestructura y Seguridad
 
-*   **Modelos "Small" o "Mini":** No necesitamos el modelo más potente del mundo (como GPT-4o) para registrar un gasto. Usaremos modelos como **GPT-4o-mini** o **Llama 3 (vía Groq)**. Son hasta 20 veces más baratos y responden en milisegundos.
-*   **IA Local para Tareas Simples:** Muchas cosas (como detectar la categoría de un gasto) las seguiremos haciendo con el código interno de la app (sin costo) y solo llamaremos a la nube para preguntas complejas.
-
----
-
-## 4. 🧠 Explicación para "No Técnicos"
-
-### ¿Cómo funciona la sincronización ahora?
-Imagina que la app es un cuaderno y Supabase es una caja fuerte en la nube. Antes, cada vez que escribías una palabra, corrías a la caja fuerte a guardarla. Ahora, escribes tranquilamente y cada 5 minutos un "asistente invisible" toma una foto de tu cuaderno y la guarda en la caja fuerte. Si decides cerrar el cuaderno, no tienes que esperar a nadie, la app ya sabe cuándo hacer su trabajo.
-
-### ¿Qué es la vinculación de cuentas?
-Es como si tuvieras una billetera (BCP) y un bolsillo pequeño dentro de ella (Yape). El dinero es el mismo. Si sacas 10 soles del bolsillo pequeño, la billetera tiene 10 soles menos. Mi nuevo código asegura que la app siempre mire "la billetera entera" para no contar el mismo dinero dos veces.
+- **Row Level Security (RLS):** Asegurar que las políticas de Supabase estén correctamente configuradas para que ningún usuario pueda acceder a los datos de otro, incluso si conocen su ID.
+- **Backups:** Configurar backups automáticos diarios de la base de datos PostgreSQL en Supabase.
 
 ---
-
-## 5. 🗺️ Próximos Pasos (Roadmap)
-
-1.  **Dashboard Premium:** Añadir efectos de cristal (glassmorphism) y gráficas interactivas más fluidas.
-2.  **IA de Metas:** Hacer que la IA no solo sugiera pasos, sino que te pregunte "¿Cómo vas con el paso 1?" cada semana.
-3.  **Lector de Notificaciones Real:** Desarrollar el módulo nativo de Android que "escuche" a Yape en tiempo real (requiere un proceso especial de compilación).
-
----
-**Vida Plena** está lista para el siguiente nivel. ¡Sigamos construyendo! 🚀
+*Documento preparado por Jules para el proyecto Vida Plena.*
