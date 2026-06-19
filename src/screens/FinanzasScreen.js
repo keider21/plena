@@ -11,7 +11,7 @@ import { format, parseISO } from 'date-fns';
 import { es } from 'date-fns/locale';
 import {
   ACCOUNT_TYPES, accountType, LOAN_TYPES, loanType, DEBT_PRIORITIES, debtPriority,
-  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, totalLiquid, periodRange, loanPending, loanBreakdown, loanTotalCost, categoryColor, CARD_KINDS,
+  TX_TYPES, CATEGORIES, PERIODS, financeStats, netWorth, totalLiquid, findRootAccId, periodRange, loanPending, loanBreakdown, loanTotalCost, categoryColor, CARD_KINDS,
   incomeCategoriesGrouped, userCategoriesGrouped, usageByCategory, sortGroupedByUsage,
 } from '../utils/finance';
 import { purchasePaymentInfo } from '../utils/cardCycle';
@@ -29,7 +29,6 @@ const TABS = [
   { key: 'prestamos',    label: 'Préstamos',     icon: 'cash-outline',         color: '#E63959' },
   { key: 'deudas',       label: 'Deudas',        icon: 'alert-circle-outline', color: '#F4607A' },
   { key: 'cobrar',       label: 'Por cobrar',    icon: 'receipt-outline',      color: '#9B84F4' },
-  { key: 'reparar',      label: 'Reparar',       icon: 'build-outline',        color: COLORS.amber },
 ];
 const FREQ_OPTS = [
   { key: 'diario', label: 'Diario' },
@@ -288,14 +287,14 @@ export default function FinanzasScreen({ navigation, route }) {
   const confirmDel = (label, fn) => Alert.alert('Eliminar', `¿Eliminar ${label}?`, [{ text: 'Cancelar' }, { text: 'Eliminar', style: 'destructive', onPress: fn }]);
 
   const onDeleteCurrent = () => {
-    const fns = { account: store.deleteAccount, card: store.deleteCard, loan: store.deleteLoan, debt: store.deleteDebt, gastoFijo: store.deleteGastoFijo, receivable: store.deleteReceivable, movement: store.deleteTransaction, reparar: store.reconcileAccounts };
+    const fns = { account: store.deleteAccount, card: store.deleteCard, loan: store.deleteLoan, debt: store.deleteDebt, gastoFijo: store.deleteGastoFijo, receivable: store.deleteReceivable, movement: store.deleteTransaction };
     const fn = fns[modal.type];
     if (!fn) return;
     confirmDel('este registro', async () => { await fn(modal.id); close(); });
   };
 
-  const stats = financeStats(finance.transactions, period);
-  const fabType = { resumen: 'movement', gastos_fijos: 'gastoFijo', cuentas: 'account', tarjetas: 'card', prestamos: 'loan', deudas: 'debt', cobrar: 'receivable', reparar: 'reparar' }[tab];
+  const stats = financeStats(finance.transactions, period, cur);
+  const fabType = { resumen: 'movement', gastos_fijos: 'gastoFijo', cuentas: 'account', tarjetas: 'card', prestamos: 'loan', deudas: 'debt', cobrar: 'receivable' }[tab];
   const activeTab = TABS.find(t => t.key === tab) || TABS[0];
   const gastoUsage = useMemo(() => usageByCategory(finance.transactions, 'gasto'), [finance.transactions]);
   const ingresoUsage = useMemo(() => usageByCategory(finance.transactions, 'ingreso'), [finance.transactions]);
@@ -307,7 +306,7 @@ export default function FinanzasScreen({ navigation, route }) {
       <View style={styles.hero}>
         <Text style={styles.heroTitle}>Finanzas</Text>
         <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
-          <Text style={styles.heroSub}>Saldo actual: {formatMoney(totalLiquid(finance), cur)}</Text>
+          <Text style={styles.heroSub}>Saldo actual ({cur}): {formatMoney(totalLiquid(finance, cur), cur)}</Text>
         </View>
       </View>
 
@@ -349,19 +348,8 @@ export default function FinanzasScreen({ navigation, route }) {
         <View style={{ height: 90 }} />
       </ScrollView>
 
-      <TouchableOpacity
-        style={[styles.fab, tab === 'reparar' && { backgroundColor: COLORS.amber }]}
-        onPress={() => tab === 'reparar' ? Alert.alert('Reparar Finanzas', '¿Recalcular saldos y resúmenes basándose en tu historial completo?', [
-          { text: 'Cancelar' },
-          { text: 'Reparar ahora', onPress: async () => {
-            await store.reconcileAccounts();
-            Alert.alert('¡Listo!', 'Los saldos han sido reconstruidos.');
-            setTab('resumen');
-          }}
-        ]) : openModal(fabType)}
-        activeOpacity={0.85}
-      >
-        <Ionicons name={tab === 'reparar' ? "build" : "add"} size={28} color="#fff" />
+      <TouchableOpacity style={styles.fab} onPress={() => openModal(fabType)} activeOpacity={0.85}>
+        <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
       {/* Modal de formularios */}
@@ -896,8 +884,8 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx }) 
 }
 
 function Cuentas({ finance, cur, onAdd, onMove, onEdit, onDel }) {
-  // Patrimonio real: excluir vinculadas (su saldo ya está en la cuenta padre)
-  const total = finance.accounts.filter((a) => !a.linkedTo && a.currency === cur).reduce((s, a) => s + (a.balance || 0), 0);
+  // Patrimonio real usando la utilidad centralizada (evita errores de cálculo manual)
+  const total = totalLiquid(finance, cur);
   if (finance.accounts.length === 0) {
     return <EmptyState icon="wallet-outline" title="Sin cuentas" subtitle="Agrega tus cuentas (Yape, Plin, BCP, efectivo...) para llevar tus saldos." actionLabel="Agregar cuenta" onAction={onAdd} />;
   }
@@ -918,7 +906,8 @@ function Cuentas({ finance, cur, onAdd, onMove, onEdit, onDel }) {
             </View>
             {a.linkedTo && <View style={[styles.kindBadge, { backgroundColor: COLORS.blueDim }]}><Text style={[styles.kindBadgeText, { color: COLORS.blue }]}>Vinculada</Text></View>}
             {(() => {
-              const displayBal = a.linkedTo ? (finance.accounts.find(p => p.id === a.linkedTo)?.balance ?? a.balance ?? 0) : (a.balance ?? 0);
+              const rootId = findRootAccId(finance.accounts, a.id);
+              const displayBal = rootId !== a.id ? (finance.accounts.find(p => p.id === rootId)?.balance ?? a.balance ?? 0) : (a.balance ?? 0);
               return <Text style={[styles.listAmt, { color: displayBal >= 0 ? COLORS.text : COLORS.red }]}>{formatMoney(displayBal, a.currency)}</Text>;
             })()}
           </TouchableOpacity>
@@ -983,7 +972,12 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay, onHistory 
               </>
             ) : (
               <Text style={styles.debitoNote}>
-                {`Saldo: ${formatMoney(c.linkedTo ? (finance.accounts.find(a => a.id === c.linkedTo)?.balance ?? c.balance ?? 0) : (c.balance ?? 0), c.currency)}${c.linkedTo && finance.accounts.find(a => a.id === c.linkedTo) ? ` · Vinculada a ${finance.accounts.find(a => a.id === c.linkedTo).name}` : ''}`}
+                {(() => {
+                   const rootId = findRootAccId(finance.accounts, c.linkedTo);
+                   const bal = rootId ? (finance.accounts.find(a => a.id === rootId)?.balance ?? c.balance ?? 0) : (c.balance ?? 0);
+                   const parentName = rootId ? (finance.accounts.find(a => a.id === rootId)?.name || 'cuenta') : null;
+                   return `Saldo: ${formatMoney(bal, c.currency)}${parentName ? ` · Vinculada a ${parentName}` : ''}`;
+                })()}
               </Text>
             )}
           </TouchableOpacity>

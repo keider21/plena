@@ -49,6 +49,17 @@ export const CARD_KINDS = [
 ];
 export const cardKind = (k) => CARD_KINDS.find((x) => x.key === k) || CARD_KINDS[0];
 
+// Helper para encontrar el ID raíz de una cuenta (maneja vinculación recursiva)
+export const findRootAccId = (accounts, id, visited = new Set()) => {
+  if (!id || !Array.isArray(accounts) || visited.has(id)) return id || null;
+  visited.add(id);
+  const acc = accounts.find(a => a.id === id);
+  if (!acc) return id;
+  if (!acc.linkedTo || acc.linkedTo === id) return id;
+  // Búsqueda recursiva para llegar al tope
+  return findRootAccId(accounts, acc.linkedTo, visited);
+};
+
 // Color único y consistente por categoría (para todos los gráficos)
 const CAT_COLOR_MAP = {
   'Alimentación': '#10B981', 'Transporte': '#0EA5E9', 'Vivienda': '#7C3AED', 'Servicios': '#6366F1',
@@ -83,9 +94,11 @@ export function periodRange(period, ref = new Date()) {
   }
 }
 
-export function financeStats(transactions, period, ref = new Date()) {
+export function financeStats(transactions, period, currency = 'PEN', ref = new Date()) {
   const [s, e] = periodRange(period, ref);
   const inRange = (transactions || []).filter((t) => {
+    // Validar moneda si la transacción la tiene, si no (legacy) asumimos PEN o la del filtro
+    if (t.currency && t.currency !== currency) return false;
     try { const d = parseISO(t.date); return d >= s && d <= e; } catch { return false; }
   });
   const ingresos = inRange.filter((t) => t.type === 'ingreso').reduce((a, t) => a + t.amount, 0);
@@ -235,11 +248,23 @@ export function userCategoriesGrouped(settings) {
   return result;
 }
 
-export function totalLiquid(finance) {
-  // Solo dinero disponible: cuentas (no vinculadas) + tarjetas de débito (no vinculadas)
-  const accounts = (finance.accounts || []).filter(a => !a.linkedTo).reduce((a, x) => a + (x.balance || 0), 0);
-  const debitBal = (finance.cards || []).filter((c) => c.kind === 'debito' && !c.linkedTo).reduce((a, c) => a + (c.balance || 0), 0);
-  return accounts + debitBal;
+export function totalLiquid(finance, currency = 'PEN') {
+  if (!finance) return 0;
+  const accounts = finance.accounts || [];
+  const cards = finance.cards || [];
+
+  // Solo dinero disponible: cuentas que son RAÍCES (no están vinculadas a otra)
+  const rootAccounts = accounts.filter(a => {
+    const rootId = findRootAccId(accounts, a.id);
+    return rootId === a.id && a.currency === currency;
+  }).reduce((a, x) => a + (x.balance || 0), 0);
+
+  // Y tarjetas de débito que no están vinculadas a ninguna cuenta
+  const standaloneDebits = cards.filter(c =>
+    c.kind === 'debito' && !c.linkedTo && c.currency === currency
+  ).reduce((a, c) => a + (c.balance || 0), 0);
+
+  return rootAccounts + standaloneDebits;
 }
 
 export function netWorth(finance) {
