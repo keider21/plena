@@ -300,6 +300,7 @@ export const useStore = create((set, get) => ({
         finance: parsedFinance,
         areas: areasRaw ? JSON.parse(areasRaw) : [],
         aiConversations: aiConvRaw ? JSON.parse(aiConvRaw) : [],
+        lastRepair: await AsyncStorage.getItem('lastRepair'),
       });
     } catch (e) { console.log('Storage error', e); }
   },
@@ -391,6 +392,8 @@ export const useStore = create((set, get) => ({
     });
 
     await get()._saveFinance({ ...f, accounts, cards });
+    set({ lastRepair: new Date().toISOString() });
+    await AsyncStorage.setItem('lastRepair', new Date().toISOString());
     return { success: true };
   },
 

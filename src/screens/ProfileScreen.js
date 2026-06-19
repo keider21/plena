@@ -53,22 +53,28 @@ export default function ProfileScreen({ navigation }) {
       ]
     },
     {
-      title: 'App y Seguridad',
+      title: 'Herramientas de Datos',
       items: [
-        { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.blue, onPress: () => navigation.navigate('Permisos') },
-        { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
         {
           icon: 'build-outline',
-          label: 'Reparar saldos bancarios',
+          label: 'Reparar y Sincronizar saldos',
           color: COLORS.amber,
-          onPress: () => Alert.alert('Reparar', '¿Recalcular saldos basándose en tu historial de movimientos? Úsalo si los saldos de tus cuentas no cuadran.', [
+          onPress: () => Alert.alert('Reparar Finanzas', '¿Recalcular saldos y resúmenes basándose en tu historial completo? Úsalo si los montos de "Resumen" o "Cuentas" no coinciden.', [
             { text: 'Cancelar' },
             { text: 'Reparar ahora', onPress: async () => {
               await reconcileAccounts();
-              Alert.alert('¡Listo!', 'Los saldos han sido reconciliados.');
+              Alert.alert('¡Listo!', 'Los saldos han sido reconstruidos desde el historial.');
             }}
           ])
         },
+        { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
+        { icon: 'terminal-outline', label: 'Logs de desarrollo', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
+      ]
+    },
+    {
+      title: 'App y Seguridad',
+      items: [
+        { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.blue, onPress: () => navigation.navigate('Permisos') },
         { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan localmente y se sincronizan de forma segura con tu cuenta de Supabase.') },
       ]
     },
@@ -76,7 +82,6 @@ export default function ProfileScreen({ navigation }) {
       title: 'Soporte y Sistema',
       items: [
         { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
-        { icon: 'terminal-outline', label: 'Logs de desarrollo', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
       ]
     }
   ];

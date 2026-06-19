@@ -78,6 +78,7 @@ export default function DashboardScreen({ navigation }) {
   const realBalance = (typeof totalLiquid === 'function') ? totalLiquid(storeFinance) : (storeFinance?.accounts || []).filter(a => !a.linkedTo).reduce((s, a) => s + (a.balance || 0), 0);
 
   const pendingNotifs = storeFinance?.pendingFromNotifs || [];
+  const { lastRepair } = useStore();
 
   return (
     <View style={{ flex: 1 }}>
@@ -151,6 +152,11 @@ export default function DashboardScreen({ navigation }) {
           numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
           {formatMoney(realBalance, cur)}
         </Text>
+        {lastRepair && (
+          <Text style={{ fontSize: 9, color: COLORS.textMuted, marginTop: -4, marginBottom: 4 }}>
+            Saldos validados: {format(new Date(lastRepair), "d MMM, HH:mm", { locale: es })}
+          </Text>
+        )}
         <View style={styles.balanceDivider} />
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
           <View style={{ flexDirection: 'row', gap: 12 }}>
