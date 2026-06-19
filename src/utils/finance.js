@@ -242,5 +242,6 @@ export function netWorth(finance) {
   const creditUsed = (finance.cards || []).filter((c) => c.kind !== 'debito').reduce((a, c) => a + (c.used || 0), 0);
   const debts = (finance.debts || []).reduce((a, x) => a + Math.max(0, (x.amount || 0) - (x.paid || 0)), 0);
   const loans = (finance.loans || []).reduce((a, x) => a + loanPending(x), 0);
-  return accounts + debitBal - creditUsed - debts - loans;
+  const receivables = (finance.receivables || []).reduce((a, x) => a + Math.max(0, (x.amount || 0) - (x.paid || 0)), 0);
+  return accounts + debitBal + receivables - creditUsed - debts - loans;
 }

@@ -975,12 +975,19 @@ function Tarjetas({ finance, onEdit, onDel, onAdd, onCalendar, onPay, onHistory 
 }
 
 function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore, onHistory }) {
-  if (finance.loans.length === 0) {
+  const loans = finance.loans || [];
+  if (loans.length === 0) {
     return <EmptyState icon="cash-outline" title="Sin préstamos" subtitle="Registra préstamos (banco, familiar...) con su saldo pendiente y registra pagos." actionLabel="Agregar préstamo" onAction={onAdd} />;
   }
   return (
     <View>
-      {finance.loans.map((l) => {
+      <MultiCurrencyTotal
+        items={loans}
+        getAmount={(l) => loanPending(l)}
+        label="Total en préstamos"
+        color={COLORS.red}
+      />
+      {loans.map((l) => {
         const t = loanType(l.lenderType);
         const br = loanBreakdown(l);
         const isCuotas = (l.installmentsTotal || 0) > 0;
@@ -1056,12 +1063,19 @@ function Prestamos({ finance, onEdit, onDel, onAdd, onPay, onAddMore, onHistory 
 }
 
 function Deudas({ finance, onEdit, onDel, onAdd, onPay, onHistory }) {
-  if (finance.debts.length === 0) {
+  const debts = finance.debts || [];
+  if (debts.length === 0) {
     return <EmptyState icon="alert-circle-outline" title="Sin deudas" subtitle="Registra a quién le debes, monto y prioridad, y registra tus pagos." actionLabel="Agregar deuda" onAction={onAdd} />;
   }
   return (
     <View>
-      {finance.debts.map((d) => {
+      <MultiCurrencyTotal
+        items={debts}
+        getAmount={(d) => Math.max(0, (d.amount || 0) - (d.paid || 0))}
+        label="Total en deudas"
+        color={COLORS.red}
+      />
+      {debts.map((d) => {
         const pr = debtPriority(d.priority);
         const pct = d.amount ? Math.min(100, Math.round(((d.paid || 0) / d.amount) * 100)) : 0;
         const rem = Math.max(0, (d.amount || 0) - (d.paid || 0));
@@ -1096,18 +1110,43 @@ function Deudas({ finance, onEdit, onDel, onAdd, onPay, onHistory }) {
   );
 }
 
+function MultiCurrencyTotal({ items, getAmount, label, color }) {
+  const totals = {};
+  items.forEach(item => {
+    const c = item.currency || 'PEN';
+    totals[c] = (totals[c] || 0) + getAmount(item);
+  });
+  const keys = Object.keys(totals).sort();
+  if (keys.length === 0) return null;
+
+  return (
+    <View style={styles.totalCard}>
+      <Text style={styles.statLbl}>{label}</Text>
+      <Text style={[styles.totalVal, { color }]} numberOfLines={1} adjustsFontSizeToFit>
+        {keys.map((k, i) => (
+          <React.Fragment key={k}>
+            {i > 0 && <Text style={{ fontSize: 16, color: COLORS.textMuted }}> + </Text>}
+            {formatMoney(totals[k], k)}
+          </React.Fragment>
+        ))}
+      </Text>
+    </View>
+  );
+}
+
 function CuentasCobrar({ finance, onEdit, onDel, onAdd, onCollect, onHistory }) {
   const receivables = finance.receivables || [];
   if (receivables.length === 0) {
     return <EmptyState icon="cash-outline" title="Sin cuentas por cobrar" subtitle="Registra a quién le prestaste dinero, el monto y cuándo vence. Lleva el seguimiento de cobros." actionLabel="Agregar cuenta por cobrar" onAction={onAdd} />;
   }
-  const totalPend = receivables.reduce((s, r) => s + Math.max(0, (r.amount || 0) - (r.paid || 0)), 0);
   return (
     <View>
-      <View style={styles.totalCard}>
-        <Text style={styles.statLbl}>Total por cobrar</Text>
-        <Text style={[styles.totalVal, { color: COLORS.green }]}>{formatMoney(totalPend, receivables[0]?.currency || 'PEN')}</Text>
-      </View>
+      <MultiCurrencyTotal
+        items={receivables}
+        getAmount={(r) => Math.max(0, (r.amount || 0) - (r.paid || 0))}
+        label="Total por cobrar"
+        color={COLORS.green}
+      />
       {receivables.map((r) => {
         const pct = r.amount ? Math.min(100, Math.round(((r.paid || 0) / r.amount) * 100)) : 0;
         const rem = Math.max(0, (r.amount || 0) - (r.paid || 0));
@@ -1154,20 +1193,19 @@ const PERIOD_LABELS = { mensual: 'Mensual', semanal: 'Semanal', anual: 'Anual' }
 const PERIOD_MULT = { mensual: 1, semanal: 4.33, anual: 1 / 12 };
 
 function GastosFijos({ finance, cur, onEdit, onDel, onAdd, settings }) {
-  const lista = finance.gastosFijos || [];
-  const monthlyTotal = lista
-    .filter((g) => g.active !== false)
-    .reduce((s, g) => s + (g.amount || 0) * (PERIOD_MULT[g.period] || 1), 0);
+  const lista = (finance.gastosFijos || []).filter((g) => g.active !== false);
 
-  if (lista.length === 0) {
+  if (finance.gastosFijos?.length === 0) {
     return <EmptyState icon="repeat-outline" title="Sin gastos fijos" subtitle="Registra tus gastos recurrentes: alquiler, servicios, suscripciones, etc." actionLabel="Agregar gasto fijo" onAction={onAdd} />;
   }
   return (
     <View>
-      <View style={styles.totalCard}>
-        <Text style={styles.statLbl}>Total fijos al mes (estimado)</Text>
-        <Text style={[styles.totalVal, { color: COLORS.red }]}>{formatMoney(monthlyTotal, cur)}</Text>
-      </View>
+      <MultiCurrencyTotal
+        items={lista}
+        getAmount={(g) => (g.amount || 0) * (PERIOD_MULT[g.period] || 1)}
+        label="Total fijos al mes (estimado)"
+        color={COLORS.red}
+      />
       {lista.map((g) => (
         <TouchableOpacity key={g.id} style={[styles.listCard, !g.active && { opacity: 0.62 }]} onPress={() => onEdit(g)} onLongPress={() => onDel(g)} activeOpacity={0.8}>
           <View style={[styles.listIcon, { backgroundColor: categoryColor(g.category) + '22' }]}>

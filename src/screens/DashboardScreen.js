@@ -75,7 +75,9 @@ export default function DashboardScreen({ navigation }) {
   ];
   const goFinance = (q) => { setQuickMenu(false); navigation.navigate('Finanzas', { quickAdd: q }); };
 
-  const realBalance = (storeFinance?.accounts || []).filter(a => !a.linkedTo).reduce((s, a) => s + (a.balance || 0), 0);
+  const realBalance =
+    (storeFinance?.accounts || []).filter(a => !a.linkedTo).reduce((s, a) => s + (a.balance || 0), 0) +
+    (storeFinance?.cards || []).filter(c => c.kind === 'debito' && !c.linkedTo).reduce((s, c) => s + (c.balance || 0), 0);
 
   return (
     <View style={{ flex: 1 }}>
