@@ -21,6 +21,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import AuthScreen from './src/screens/AuthScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import AppNavigator from './src/navigation/AppNavigator';
+import PaymentBanner from './src/components/PaymentBanner';
 import { COLORS } from './src/utils/theme';
 
 // Instalar handlers ANTES de que React monte nada
@@ -138,7 +139,10 @@ export default function App() {
             ) : !onboardingDone ? (
               <OnboardingScreen />
             ) : (
+              <>
               <AppNavigator />
+              <PaymentBanner />
+            </>
             )}
           </NavigationContainer>
         </SafeAreaProvider>

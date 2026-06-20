@@ -335,10 +335,12 @@ export const useStore = create((set, get) => ({
       return da.localeCompare(db);
     });
 
-    // Resetear saldos al valor inicial. Si no existe initialBalance (cuentas viejas),
-    // asumimos que el saldo actual es el correcto para empezar la cuenta.
-    let accounts = f.accounts.map(a => ({ ...a, balance: a.initialBalance ?? a.balance ?? 0 }));
-    let cards = f.cards.map(c => ({ ...c, used: 0, balance: c.initialBalance ?? c.balance ?? 0 }));
+    // Resetear saldos al valor inicial.
+    // IMPORTANTE: Si el usuario puso un Saldo Inicial pero tiene transacciones ANTERIORES
+    // a la fecha en que puso ese saldo, se van a duplicar los valores.
+    // Por ahora reseteamos a initialBalance.
+    let accounts = f.accounts.map(a => ({ ...a, balance: a.initialBalance ?? 0 }));
+    let cards = f.cards.map(c => ({ ...c, used: 0, balance: (c.kind === 'debito' ? (c.initialBalance ?? 0) : 0) }));
 
     const getRootId = (accId, cardId) => {
       let finalAccId = accId;
@@ -361,7 +363,7 @@ export const useStore = create((set, get) => ({
           if (t.type === 'ingreso') newBal += amt;
           else if (t.type === 'gasto' || t.type === 'transferencia' || t.type === 'pago') newBal -= amt;
         }
-        if (t.type === 'transferencia' && rootId === toRootId) return { ...a, balance: newBal };
+        if (t.type === 'transferencia' && rootId === toRootId) return a; // Ignorar transferencias internas
         if (t.type === 'transferencia' && toRootId && a.id === toRootId) {
           newBal += amt;
         }
@@ -370,10 +372,15 @@ export const useStore = create((set, get) => ({
 
       // Aplicar a tarjetas
       if (t.cardId) {
+        const txCard = f.cards.find(c => c.id === t.cardId);
         cards = cards.map(c => {
           if (c.id !== t.cardId) return c;
           if (t.type === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - amt) };
-          if (c.kind === 'debito') return c; // balance viene de cuenta
+          if (c.kind === 'debito') {
+            // Si es debito y NO está vinculada, su saldo es independiente
+            if (!c.linkedTo) return { ...c, balance: (c.balance || 0) - amt };
+            return c; // si está vinculada, ya se restó del rootAccount arriba
+          }
           return { ...c, used: (c.used || 0) + amt };
         });
       }
@@ -836,6 +843,7 @@ export const useStore = create((set, get) => ({
 
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
+        if (delOriginRoot === delDestRoot) return a;
         if (a.id === delOriginRoot) return { ...a, balance: (a.balance || 0) + amt };
         if (a.id === delDestRoot) return { ...a, balance: (a.balance || 0) - amt };
         return a;
@@ -898,7 +906,7 @@ export const useStore = create((set, get) => ({
     // Revert old effects on accounts (always using roots)
     let accounts = f.accounts.map(a => {
       if (oldRootId && a.id === oldRootId) return { ...a, balance: (a.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
-      if (old.type === 'transferencia' && oldToRootId && a.id === oldToRootId) return { ...a, balance: (a.balance || 0) - oldAmt };
+      if (old.type === 'transferencia' && oldRootId !== oldToRootId && oldToRootId && a.id === oldToRootId) return { ...a, balance: (a.balance || 0) - oldAmt };
       return a;
     });
     // Revert old effects on cards
@@ -916,7 +924,7 @@ export const useStore = create((set, get) => ({
     // Apply new effects on accounts (always using roots)
     accounts = accounts.map(a => {
       if (newRootId && a.id === newRootId) return { ...a, balance: (a.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
-      if (newType === 'transferencia' && newToRootId && a.id === newToRootId) return { ...a, balance: (a.balance || 0) + newAmt };
+      if (newType === 'transferencia' && newRootId !== newToRootId && newToRootId && a.id === newToRootId) return { ...a, balance: (a.balance || 0) + newAmt };
       return a;
     });
     // Apply new effects on cards

@@ -57,17 +57,21 @@ export const findRootAccId = (accounts, id) => {
   const path = [];
   let currId = id;
 
+  // Obtener la cuenta inicial para asegurar que solo vinculamos la misma moneda
+  const initialAcc = accounts.find(a => a.id === id);
+  if (!initialAcc) return id;
+
   while (currId && !visited.has(currId)) {
     visited.add(currId);
     path.push(currId);
     const acc = accounts.find(a => a.id === currId);
+    // Verificamos que la cuenta vinculada exista y tenga LA MISMA MONEDA
     if (!acc || !acc.linkedTo || acc.linkedTo === currId) break;
+    const parent = accounts.find(p => p.id === acc.linkedTo);
+    if (!parent || parent.currency !== initialAcc.currency) break;
     currId = acc.linkedTo;
   }
 
-  // Si encontramos un ciclo o llegamos a un final, el "Root" consistente
-  // es el ID más pequeño (lexicográficamente) de todos los nodos tocados.
-  // Esto garantiza que BCP y Yape siempre coincidan en su Root.
   return path.sort()[0];
 };
 

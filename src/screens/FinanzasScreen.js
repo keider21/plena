@@ -787,7 +787,7 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx, fi
   const accName = (id) => finance.accounts.find((a) => a.id === id)?.name || '—';
   const srcName = (t) => (t.cardId ? '💳 ' + (finance.cards.find((c) => c.id === t.cardId)?.bank || 'Tarjeta') : accName(t.accountId));
   const [search, setSearch] = useState('');
-  const liquid = totalLiquid(finance);
+  const liquid = totalLiquid(finance, cur);
 
   // Filter transactions by period when no search term, show all when searching
   const [s, e] = periodRange(period);
