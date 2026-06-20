@@ -49,16 +49,29 @@ export const CARD_KINDS = [
 ];
 export const cardKind = (k) => CARD_KINDS.find((x) => x.key === k) || CARD_KINDS[0];
 
-// Helper para encontrar el ID raíz de una cuenta (maneja vinculación recursiva)
-export const findRootAccId = (accounts, id, visited = new Set()) => {
-  if (!id || !Array.isArray(accounts) || visited.has(id)) return id || null;
-  visited.add(id);
-  const acc = accounts.find(a => a.id === id);
-  if (!acc || !acc.linkedTo || acc.linkedTo === id) return id;
-  return findRootAccId(accounts, acc.linkedTo, visited);
+// Encontrar el ID "representante" de un grupo de cuentas vinculadas.
+// Maneja ciclos (A->B, B->A) devolviendo siempre el mismo ID para todos los miembros.
+export const findRootAccId = (accounts, id) => {
+  if (!id || !Array.isArray(accounts)) return id || null;
+  const visited = new Set();
+  const path = [];
+  let currId = id;
+
+  while (currId && !visited.has(currId)) {
+    visited.add(currId);
+    path.push(currId);
+    const acc = accounts.find(a => a.id === currId);
+    if (!acc || !acc.linkedTo || acc.linkedTo === currId) break;
+    currId = acc.linkedTo;
+  }
+
+  // Si encontramos un ciclo o llegamos a un final, el "Root" consistente
+  // es el ID más pequeño (lexicográficamente) de todos los nodos tocados.
+  // Esto garantiza que BCP y Yape siempre coincidan en su Root.
+  return path.sort()[0];
 };
 
-// Color único y consistente por categoría (para todos los gráficos)
+// Color único y consistente por categoría
 const CAT_COLOR_MAP = {
   'Alimentación': '#10B981', 'Transporte': '#0EA5E9', 'Vivienda': '#7C3AED', 'Servicios': '#6366F1',
   'Salud': '#EF4444', 'Educación': '#F59E0B', 'Entretenimiento': '#EC4899', 'Ropa': '#14B8A6',
@@ -68,18 +81,14 @@ const CAT_COLOR_MAP = {
 const CAT_PALETTE = ['#7C3AED', '#10B981', '#0EA5E9', '#F59E0B', '#EC4899', '#6366F1', '#14B8A6', '#EF4444', '#F97316', '#A78BFA'];
 export function categoryColor(name) {
   if (CAT_COLOR_MAP[name]) return CAT_COLOR_MAP[name];
-  let h = 0;
-  const s = name || '';
+  let h = 0; const s = name || '';
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return CAT_PALETTE[h % CAT_PALETTE.length];
 }
 
 export const PERIODS = [
-  { key: 'dia', label: 'Día' },
-  { key: 'semana', label: 'Semana' },
-  { key: 'mes', label: 'Mes' },
-  { key: 'trimestre', label: 'Trim.' },
-  { key: 'anio', label: 'Año' },
+  { key: 'dia', label: 'Día' }, { key: 'semana', label: 'Semana' }, { key: 'mes', label: 'Mes' },
+  { key: 'trimestre', label: 'Trim.' }, { key: 'anio', label: 'Año' },
 ];
 
 export function periodRange(period, ref = new Date()) {
@@ -209,8 +218,7 @@ export function userCategories(settings) {
   const all = [...CATEGORIES.gasto, ...custom];
   const result = [];
   all.forEach(cat => {
-    result.push(cat);
-    (subs[cat] || []).forEach(sub => result.push(sub));
+    result.push(cat); (subs[cat] || []).forEach(sub => result.push(sub));
   });
   return result;
 }
@@ -232,9 +240,27 @@ export function totalLiquid(finance, currency = 'PEN') {
   if (!finance) return 0;
   const accounts = finance.accounts || [];
   const cards = finance.cards || [];
-  const rootAccounts = accounts.filter(a => findRootAccId(accounts, a.id) === a.id && a.currency === currency).reduce((a, x) => a + (x.balance || 0), 0);
-  const standaloneDebits = cards.filter(c => c.kind === 'debito' && !c.linkedTo && c.currency === currency).reduce((a, c) => a + (c.balance || 0), 0);
-  return rootAccounts + standaloneDebits;
+  const rootsCounted = new Set();
+  let total = 0;
+
+  accounts.forEach(a => {
+    if (a.currency !== currency) return;
+    const rootId = findRootAccId(accounts, a.id);
+    if (!rootsCounted.has(rootId)) {
+      const rootAcc = accounts.find(acc => acc.id === rootId);
+      total += (rootAcc?.balance || 0);
+      rootsCounted.add(rootId);
+    }
+  });
+
+  // Tarjetas de débito independientes
+  cards.forEach(c => {
+    if (c.kind === 'debito' && !c.linkedTo && c.currency === currency) {
+      total += (c.balance || 0);
+    }
+  });
+
+  return total;
 }
 
 export function netWorth(finance, currency = 'PEN') {

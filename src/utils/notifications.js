@@ -291,6 +291,6 @@ export async function reschedulePlan(planning, habits = []) {
 export function startKeepAliveService() {
   if (Platform.OS !== 'android' || !FSN || !FSN.startKeepAlive) return;
   try {
-    FSN.startKeepAlive();
+    if (FSN.startKeepAlive) FSN.startKeepAlive();
   } catch (e) {}
 }

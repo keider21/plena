@@ -733,8 +733,6 @@ export const useStore = create((set, get) => ({
     // sobre la raíz evita que el espejo de vinculadas borre el movimiento.
     let transferOriginRoot = null, transferDestRoot = null;
     if (t.type === 'transferencia') {
-        if (delOriginRoot === delDestRoot) return a;
-        if (transferOriginRoot === transferDestRoot) return a;
       transferOriginRoot = findRootAccId(f.accounts, t.accountId);
       transferDestRoot = findRootAccId(f.accounts, t.toAccountId);
       if (!transferOriginRoot || !transferDestRoot) return { error: 'Cuenta de transferencia no encontrada.' };
@@ -772,8 +770,6 @@ export const useStore = create((set, get) => ({
 
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
-        if (delOriginRoot === delDestRoot) return a;
-        if (transferOriginRoot === transferDestRoot) return a;
         if (a.id === transferOriginRoot) return { ...a, balance: (a.balance || 0) - amt };
         if (a.id === transferDestRoot) return { ...a, balance: (a.balance || 0) + amt };
         return a;
@@ -840,8 +836,6 @@ export const useStore = create((set, get) => ({
 
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
-        if (delOriginRoot === delDestRoot) return a;
-        if (transferOriginRoot === transferDestRoot) return a;
         if (a.id === delOriginRoot) return { ...a, balance: (a.balance || 0) + amt };
         if (a.id === delDestRoot) return { ...a, balance: (a.balance || 0) - amt };
         return a;
