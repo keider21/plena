@@ -8,8 +8,7 @@ import com.facebook.react.uimanager.ViewManager
 class FullScreenNotifPackage : ReactPackage {
     override fun createNativeModules(rc: ReactApplicationContext): List<NativeModule> {
         return listOf(
-            FullScreenNotifModule(rc),
-            NotificationBridgeModule(rc)
+            FullScreenNotifModule(rc)
         )
     }
     override fun createViewManagers(rc: ReactApplicationContext): List<ViewManager<*, *>> {

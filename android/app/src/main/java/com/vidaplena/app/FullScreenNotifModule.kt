@@ -3,7 +3,10 @@ package com.vidaplena.app
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
@@ -14,6 +17,27 @@ import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class FullScreenNotifModule(private val rc: ReactApplicationContext)
     : ReactContextBaseJavaModule(rc) {
+
+    private val receiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "com.vidaplena.app.PAYMENT_NOTIFICATION") {
+                val amount = intent.getDoubleExtra("amount", 0.0)
+                val sender = intent.getStringExtra("sender") ?: ""
+                val packageName = intent.getStringExtra("packageName") ?: ""
+                val text = intent.getStringExtra("text") ?: ""
+
+                val params = Arguments.createMap().apply {
+                    putDouble("amount", amount)
+                    putString("sender", sender)
+                    putString("packageName", packageName)
+                    putString("text", text)
+                }
+
+                rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    .emit("onPaymentNotification", params)
+            }
+        }
+    }
 
     companion object {
         @Volatile private var emitter: DeviceEventManagerModule.RCTDeviceEventEmitter? = null
@@ -47,14 +71,21 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
     override fun initialize() {
         super.initialize()
         emitter = rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+
+        val filter = IntentFilter("com.vidaplena.app.PAYMENT_NOTIFICATION")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            rc.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+        } else {
+            rc.registerReceiver(receiver, filter)
+        }
     }
 
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
         emitter = null
+        try { rc.unregisterReceiver(receiver) } catch (e: Exception) {}
     }
 
-    // JS calls this on mount to retrieve any action that happened while app was killed
     @ReactMethod
     fun getPendingEvent(promise: Promise) {
         val p = pendingEvent
@@ -94,8 +125,6 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         pi?.let { am.cancel(it) }
     }
 
-    // Diagnóstico: dispara la notificación inmediatamente desde el hilo principal
-    // (sin AlarmManager). Útil para probar si el problema es el alarm o el permiso de notif.
     @ReactMethod
     fun fireNow(id: String, title: String, body: String, dataJson: String, promise: Promise) {
         try {
@@ -143,7 +172,6 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         }
     }
 
-    // Verifica si POST_NOTIFICATIONS está concedido (Android 13+)
     @ReactMethod
     fun hasNotifPermission(promise: Promise) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -154,7 +182,6 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         }
     }
 
-    // Verifica si puede programar alarmas exactas
     @ReactMethod
     fun canScheduleExact(promise: Promise) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -165,7 +192,6 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         }
     }
 
-    // Android 14+: USE_FULL_SCREEN_INTENT requires explicit user approval
     @ReactMethod
     fun canUseFullScreenIntent(promise: Promise) {
         if (Build.VERSION.SDK_INT >= 34) {
@@ -176,7 +202,6 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         }
     }
 
-    // Abre los ajustes de notificaciones a pantalla completa (Android 14+)
     @ReactMethod
     fun openFullScreenIntentSettings(promise: Promise) {
         try {
@@ -193,7 +218,6 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         }
     }
 
-    // Verifica si el sistema ignora la optimización de batería para esta app
     @ReactMethod
     fun isBatteryOptimizationIgnored(promise: Promise) {
         val pm = rc.getSystemService(PowerManager::class.java)

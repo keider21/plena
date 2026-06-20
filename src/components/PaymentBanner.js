@@ -7,7 +7,7 @@ import { formatMoney } from '../utils/currency';
 import { useStore } from '../store/useStore';
 
 const { width } = Dimensions.get('window');
-const { NotificationBridge } = NativeModules;
+const { FullScreenNotif } = NativeModules;
 
 export default function PaymentBanner() {
   const [visible, setVisible] = useState(false);
@@ -16,8 +16,8 @@ export default function PaymentBanner() {
   const { addTransaction, finance } = useStore();
 
   useEffect(() => {
-    if (!NotificationBridge) return;
-    const eventEmitter = new NativeEventEmitter(NotificationBridge);
+    if (!FullScreenNotif) return;
+    const eventEmitter = new NativeEventEmitter(FullScreenNotif);
     const sub = eventEmitter.addListener('onPaymentNotification', (payload) => {
       setData(payload);
       show();
