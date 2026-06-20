@@ -812,7 +812,7 @@ export const useStore = create((set, get) => ({
     // Tarjetas débito vinculadas espejo la cuenta
     cards = cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(x => x.id === c.linkedTo);
+      const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
       return parent ? { ...c, balance: parent.balance } : c;
     });
     // Historial de pagos a tarjeta
@@ -870,7 +870,7 @@ export const useStore = create((set, get) => ({
       : f.cards;
     cards = cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(x => x.id === c.linkedTo);
+      const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
       return parent ? { ...c, balance: parent.balance } : c;
     });
     await get()._saveFinance({ ...f, accounts, cards, transactions: f.transactions.filter(x => x.id !== id) });

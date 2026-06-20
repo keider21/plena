@@ -54,9 +54,7 @@ export const findRootAccId = (accounts, id, visited = new Set()) => {
   if (!id || !Array.isArray(accounts) || visited.has(id)) return id || null;
   visited.add(id);
   const acc = accounts.find(a => a.id === id);
-  if (!acc) return id;
-  if (!acc.linkedTo || acc.linkedTo === id) return id;
-  // Búsqueda recursiva para llegar al tope
+  if (!acc || !acc.linkedTo || acc.linkedTo === id) return id;
   return findRootAccId(accounts, acc.linkedTo, visited);
 };
 
@@ -97,7 +95,6 @@ export function periodRange(period, ref = new Date()) {
 export function financeStats(transactions, period, currency = 'PEN', ref = new Date()) {
   const [s, e] = periodRange(period, ref);
   const inRange = (transactions || []).filter((t) => {
-    // Validar moneda si la transacción la tiene, si no (legacy) asumimos PEN o la del filtro
     if (t.currency && t.currency !== currency) return false;
     try { const d = parseISO(t.date); return d >= s && d <= e; } catch { return false; }
   });
@@ -117,20 +114,16 @@ export function financeStats(transactions, period, currency = 'PEN', ref = new D
 }
 
 export function loanPending(loan) {
-  // Modelo nuevo: saldo pendiente directo. Compat con el viejo (cuotas).
   if (loan.pending != null) return Math.max(0, loan.pending);
   const remaining = Math.max(0, (loan.installmentsTotal || 0) - (loan.installmentsPaid || 0));
   return remaining * (loan.installment || 0);
 }
 
-// Desglosa un préstamo por cuotas: cuánto es capital vs cuánto es interés.
-// Devuelve { total, capital, interest, paid, pending, installmentsTotal, installmentsPaid, installment, pctPaid }
 export function loanBreakdown(loan) {
   const total = loan.amount || 0;
   const installment = loan.installment || 0;
   const installmentsTotal = loan.installmentsTotal || 0;
   const installmentsPaid = loan.installmentsPaid || 0;
-  const interest = loan.interest || 0; // % TEA (informativo)
   const paidCuotas = installmentsPaid;
   const remainingCuotas = Math.max(0, installmentsTotal - paidCuotas);
   const paid = paidCuotas * installment;
@@ -138,13 +131,11 @@ export function loanBreakdown(loan) {
   const pctPaid = installmentsTotal > 0 ? Math.round((paidCuotas / installmentsTotal) * 100) : 0;
   return {
     total, installment, installmentsTotal, installmentsPaid: paidCuotas,
-    remainingCuotas, paid, pendingCuotas, interest, pctPaid,
-    // cuando el modelo viejo (pendiente) gana
+    remainingCuotas, paid, pendingCuotas, pctPaid,
     pendingManual: loan.pending != null ? loan.pending : null,
   };
 }
 
-// Costo total e interés total de un préstamo con cuotas fijas.
 export function loanTotalCost(loan) {
   const installment = loan.installment || 0;
   const total = loan.installmentsTotal || 0;
@@ -156,18 +147,12 @@ export function loanTotalCost(loan) {
   return null;
 }
 
-// Ocupación → categorías de ingreso sugeridas
 export const OCCUPATIONS = [
-  { key: 'taxista', label: 'Taxista / Conductor', income: 'Negocio',
-    suggestedCategories: ['Taxi', 'Uber', 'InDriver', 'Rappi', 'Cabify', 'Beat'] },
-  { key: 'comerciante', label: 'Comerciante', income: 'Negocio',
-    suggestedCategories: ['Ventas', 'Comisiones', 'Delivery', 'Por mayor'] },
-  { key: 'empleado', label: 'Empleado', income: 'Sueldo',
-    suggestedCategories: ['Bonos', 'Horas extra', 'Gratificación', 'CTS'] },
-  { key: 'independiente', label: 'Independiente / Freelance', income: 'Freelance',
-    suggestedCategories: ['Proyectos', 'Consultoría', 'Diseño', 'Programación', 'Marketing'] },
-  { key: 'estudiante', label: 'Estudiante', income: 'Otros',
-    suggestedCategories: ['Mesada', 'Beca', 'Tutorías', 'Trabajo part-time'] },
+  { key: 'taxista', label: 'Taxista / Conductor', income: 'Negocio', suggestedCategories: ['Taxi', 'Uber', 'InDriver', 'Rappi', 'Cabify', 'Beat'] },
+  { key: 'comerciante', label: 'Comerciante', income: 'Negocio', suggestedCategories: ['Ventas', 'Comisiones', 'Delivery', 'Por mayor'] },
+  { key: 'empleado', label: 'Empleado', income: 'Sueldo', suggestedCategories: ['Bonos', 'Horas extra', 'Gratificación', 'CTS'] },
+  { key: 'independiente', label: 'Independiente / Freelance', income: 'Freelance', suggestedCategories: ['Proyectos', 'Consultoría', 'Diseño', 'Programación', 'Marketing'] },
+  { key: 'estudiante', label: 'Estudiante', income: 'Otros', suggestedCategories: ['Mesada', 'Beca', 'Tutorías', 'Trabajo part-time'] },
   { key: 'otro', label: 'Otro', income: 'Otros', suggestedCategories: [] },
 ];
 export const occupationIncome = (key) => (OCCUPATIONS.find((o) => o.key === key) || {}).income || null;
@@ -180,7 +165,6 @@ export function incomeCategories(occupationKey, settings) {
   return result;
 }
 
-// Lista agrupada para el Dropdown de ingresos (con subcategorías)
 export function incomeCategoriesGrouped(occupationKey, settings) {
   const flat = incomeCategories(occupationKey, settings);
   const subs = (settings && settings.customIngresoSubcategories) || {};
@@ -193,7 +177,6 @@ export function incomeCategoriesGrouped(occupationKey, settings) {
   return result;
 }
 
-// Conteo de uso por categoría (para ordenar las más usadas primero)
 export function usageByCategory(transactions, type) {
   const counts = {};
   (transactions || []).filter(t => t.type === type).forEach(t => {
@@ -202,7 +185,6 @@ export function usageByCategory(transactions, type) {
   return counts;
 }
 
-// Ordena un array de opciones agrupadas [{key, isChild?, parent?}] por uso (más usadas primero)
 export function sortGroupedByUsage(grouped, usageCounts) {
   if (!usageCounts || Object.keys(usageCounts).length === 0) return grouped;
   const parents = grouped.filter(o => !o.isChild);
@@ -221,7 +203,6 @@ export function sortGroupedByUsage(grouped, usageCounts) {
   return result;
 }
 
-// Categorías de gasto — lista plana (compatible con código existente)
 export function userCategories(settings) {
   const custom = (settings && settings.customGastoCategories) || [];
   const subs = (settings && settings.customSubcategories) || {};
@@ -234,7 +215,6 @@ export function userCategories(settings) {
   return result;
 }
 
-// Lista agrupada para el Dropdown de gastos (con subcategorías)
 export function userCategoriesGrouped(settings) {
   const custom = (settings && settings.customGastoCategories) || [];
   const subs = (settings && settings.customSubcategories) || {};
@@ -252,18 +232,8 @@ export function totalLiquid(finance, currency = 'PEN') {
   if (!finance) return 0;
   const accounts = finance.accounts || [];
   const cards = finance.cards || [];
-
-  // Solo dinero disponible: cuentas que son RAÍCES (no están vinculadas a otra)
-  const rootAccounts = accounts.filter(a => {
-    const rootId = findRootAccId(accounts, a.id);
-    return rootId === a.id && a.currency === currency;
-  }).reduce((a, x) => a + (x.balance || 0), 0);
-
-  // Y tarjetas de débito que no están vinculadas a ninguna cuenta
-  const standaloneDebits = cards.filter(c =>
-    c.kind === 'debito' && !c.linkedTo && c.currency === currency
-  ).reduce((a, c) => a + (c.balance || 0), 0);
-
+  const rootAccounts = accounts.filter(a => findRootAccId(accounts, a.id) === a.id && a.currency === currency).reduce((a, x) => a + (x.balance || 0), 0);
+  const standaloneDebits = cards.filter(c => c.kind === 'debito' && !c.linkedTo && c.currency === currency).reduce((a, c) => a + (c.balance || 0), 0);
   return rootAccounts + standaloneDebits;
 }
 
