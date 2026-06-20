@@ -267,10 +267,10 @@ export function totalLiquid(finance, currency = 'PEN') {
   return rootAccounts + standaloneDebits;
 }
 
-export function netWorth(finance) {
-  const liquid = totalLiquid(finance);
-  const creditUsed = (finance.cards || []).filter((c) => c.kind !== 'debito').reduce((a, c) => a + (c.used || 0), 0);
-  const debts = (finance.debts || []).reduce((a, x) => a + Math.max(0, (x.amount || 0) - (x.paid || 0)), 0);
-  const loans = (finance.loans || []).reduce((a, x) => a + loanPending(x), 0);
+export function netWorth(finance, currency = 'PEN') {
+  const liquid = totalLiquid(finance, currency);
+  const creditUsed = (finance.cards || []).filter((c) => c.kind !== 'debito' && c.currency === currency).reduce((a, c) => a + (c.used || 0), 0);
+  const debts = (finance.debts || []).filter(x => x.currency === currency).reduce((a, x) => a + Math.max(0, (x.amount || 0) - (x.paid || 0)), 0);
+  const loans = (finance.loans || []).filter(x => x.currency === currency).reduce((a, x) => a + loanPending(x), 0);
   return liquid - creditUsed - debts - loans;
 }

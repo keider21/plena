@@ -84,6 +84,7 @@ export default function FinanzasScreen({ navigation, route }) {
   const [pay, setPay] = useState(null); // { mode:'debt'|'loan'|'loanAdd'|'receivable', item, amount, accountId }
   const [historyFor, setHistoryFor] = useState(null); // { kind:'debt'|'loan'|'card'|'receivable', refId, label }
   const [editPayment, setEditPayment] = useState(null); // { id, amount:string, date:string }
+  const [filterAcc, setFilterAcc] = useState(null); // ID de cuenta para filtrar
 
   const set = (k, v) => setF((p) => {
     const next = { ...p, [k]: v };
@@ -324,7 +325,11 @@ export default function FinanzasScreen({ navigation, route }) {
 
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         {tab === 'resumen' && (
-          <Resumen finance={finance} cur={cur} period={period} setPeriod={setPeriod} stats={stats} onDelTx={(id) => store.deleteTransaction(id)} onEditTx={(t) => openModal('movement', t)} />
+          <Resumen
+            finance={finance} cur={cur} period={period} setPeriod={setPeriod} stats={stats}
+            onDelTx={(id) => store.deleteTransaction(id)} onEditTx={(t) => openModal('movement', t)}
+            filterAcc={filterAcc} setFilterAcc={setFilterAcc}
+          />
         )}
         {tab === 'gastos_fijos' && (
           <GastosFijos finance={finance} cur={cur} onEdit={(g) => openModal('gastoFijo', g)} onDel={(g) => confirmDel(`"${g.name}"`, () => store.deleteGastoFijo(g.id))} onAdd={() => openModal('gastoFijo')} settings={settings} />
@@ -366,7 +371,15 @@ export default function FinanzasScreen({ navigation, route }) {
                   <Field label="Nombre"><TextInput style={styles.input} value={f.name} onChangeText={(v) => set('name', v)} placeholder="Ej. Mi BCP" placeholderTextColor={COLORS.textMuted} /></Field>
                   <Field label="Tipo de cuenta"><Chips options={ACCOUNT_TYPES} value={f.type} onChange={(v) => set('type', v)} /></Field>
                   <Field label="Moneda"><Chips options={CUR_OPTS} value={f.currency} onChange={(v) => set('currency', v)} /></Field>
-                  <Field label="Saldo inicial (lo que tienes ahora)"><TextInput style={styles.input} value={String(f.balance)} onChangeText={(v) => set('balance', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                  {!f.linkedTo ? (
+                    <Field label="Saldo inicial (lo que tienes ahora)"><TextInput style={styles.input} value={String(f.balance)} onChangeText={(v) => set('balance', v)} keyboardType="numeric" placeholder="0.00" placeholderTextColor={COLORS.textMuted} /></Field>
+                  ) : (
+                    <Field label="Saldo inicial">
+                      <View style={[styles.payNote, { borderColor: COLORS.green + '66', padding: 10 }]}>
+                        <Text style={{ fontSize: 13, color: COLORS.textSub }}>Saldo automático desde <Text style={{ fontWeight: '700', color: COLORS.text }}>{finance.accounts.find(a => a.id === findRootAccId(finance.accounts, f.linkedTo))?.name || 'cuenta vinculada'}</Text></Text>
+                      </View>
+                    </Field>
+                  )}
                   {finance.accounts.filter(a => a.id !== modal?.id).length > 0 && (
                     <Field label="Vinculada a (opcional)">
                       <View style={[styles.payNote, { borderColor: COLORS.blue + '66', padding: 8, marginBottom: 0 }]}>
@@ -766,7 +779,7 @@ const Row = ({ children }) => <View style={{ flexDirection: 'row', gap: 12 }}>{c
 const Half = ({ label, children }) => <View style={{ flex: 1, marginBottom: 14 }}><Text style={styles.fLabel}>{label}</Text>{children}</View>;
 
 // ───────────── SECCIONES ─────────────
-function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx }) {
+function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx, filterAcc, setFilterAcc }) {
   const [chartMode, setChartMode] = useState('gasto');
   const cats = Object.entries(stats.byCategory).sort((a, b) => b[1] - a[1]);
   const incCats = Object.entries(stats.byIncome || {}).sort((a, b) => b[1] - a[1]);
@@ -779,6 +792,11 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx }) 
   // Filter transactions by period when no search term, show all when searching
   const [s, e] = periodRange(period);
   const recent = finance.transactions.filter((t) => {
+    // Primero filtrar por cuenta si hay filtro activo
+    if (filterAcc) {
+      if (t.accountId !== filterAcc && t.toAccountId !== filterAcc && t.cardId !== filterAcc) return false;
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       return (t.note || '').toLowerCase().includes(q) || (t.category || '').toLowerCase().includes(q) || srcName(t).toLowerCase().includes(q);
@@ -810,6 +828,23 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx }) 
         <Text style={styles.statLbl}>Balance del periodo</Text>
         <Text style={[styles.balanceVal, { color: stats.balance >= 0 ? COLORS.green : COLORS.red }]}>{stats.balance >= 0 ? '+' : ''}{formatMoney(stats.balance, cur)}</Text>
       </View>
+
+      <Text style={styles.secTitle}>Filtrar por cuenta</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingBottom: 4 }}>
+        <TouchableOpacity onPress={() => setFilterAcc(null)} style={[styles.chip, !filterAcc && styles.chipOn]}>
+          <Text style={[styles.chipText, !filterAcc && styles.chipTextOn]}>Todas</Text>
+        </TouchableOpacity>
+        {finance.accounts.map(a => (
+          <TouchableOpacity key={a.id} onPress={() => setFilterAcc(a.id)} style={[styles.chip, filterAcc === a.id && styles.chipOn]}>
+            <Text style={[styles.chipText, filterAcc === a.id && styles.chipTextOn]}>{a.name}</Text>
+          </TouchableOpacity>
+        ))}
+        {finance.cards.map(c => (
+          <TouchableOpacity key={c.id} onPress={() => setFilterAcc(c.id)} style={[styles.chip, filterAcc === c.id && styles.chipOn]}>
+            <Text style={[styles.chipText, filterAcc === c.id && styles.chipTextOn]}>💳 {c.bank}</Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
 
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 6 }}>
         <Text style={styles.secTitle}>Por categoría</Text>

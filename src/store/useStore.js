@@ -275,7 +275,7 @@ export const useStore = create((set, get) => ({
         parsedFinance.cards = (parsedFinance.cards || []).map(c => {
           if (c.initialBalance === undefined) c.initialBalance = c.balance || 0;
           if (c.kind === 'debito' && c.linkedTo) {
-            const parent = accounts.find(p => p.id === c.linkedTo);
+            const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
             if (parent) return { ...c, balance: parent.balance };
           }
           return c;
@@ -361,6 +361,7 @@ export const useStore = create((set, get) => ({
           if (t.type === 'ingreso') newBal += amt;
           else if (t.type === 'gasto' || t.type === 'transferencia' || t.type === 'pago') newBal -= amt;
         }
+        if (t.type === 'transferencia' && rootId === toRootId) return { ...a, balance: newBal };
         if (t.type === 'transferencia' && toRootId && a.id === toRootId) {
           newBal += amt;
         }
@@ -673,10 +674,11 @@ export const useStore = create((set, get) => ({
     const f = get().finance;
     const a = { id: get()._fid(), balance: 0, initialBalance: acc.balance || 0, currency: get().settings.currency, ...acc };
     let accounts = [...f.accounts, a];
-    // Si se crea vinculada, heredar saldo del padre
+    // Si se crea vinculada, heredar saldo de la raíz
     if (a.linkedTo) {
-      const parent = accounts.find(p => p.id === a.linkedTo);
-      if (parent) a.balance = parent.balance;
+      const rootId = findRootAccId(accounts, a.linkedTo);
+      const root = accounts.find(r => r.id === rootId);
+      if (root) a.balance = root.balance;
     }
     await get()._saveFinance({ ...f, accounts });
   },
@@ -731,6 +733,8 @@ export const useStore = create((set, get) => ({
     // sobre la raíz evita que el espejo de vinculadas borre el movimiento.
     let transferOriginRoot = null, transferDestRoot = null;
     if (t.type === 'transferencia') {
+        if (delOriginRoot === delDestRoot) return a;
+        if (transferOriginRoot === transferDestRoot) return a;
       transferOriginRoot = findRootAccId(f.accounts, t.accountId);
       transferDestRoot = findRootAccId(f.accounts, t.toAccountId);
       if (!transferOriginRoot || !transferDestRoot) return { error: 'Cuenta de transferencia no encontrada.' };
@@ -768,6 +772,8 @@ export const useStore = create((set, get) => ({
 
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
+        if (delOriginRoot === delDestRoot) return a;
+        if (transferOriginRoot === transferDestRoot) return a;
         if (a.id === transferOriginRoot) return { ...a, balance: (a.balance || 0) - amt };
         if (a.id === transferDestRoot) return { ...a, balance: (a.balance || 0) + amt };
         return a;
@@ -834,6 +840,8 @@ export const useStore = create((set, get) => ({
 
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
+        if (delOriginRoot === delDestRoot) return a;
+        if (transferOriginRoot === transferDestRoot) return a;
         if (a.id === delOriginRoot) return { ...a, balance: (a.balance || 0) + amt };
         if (a.id === delDestRoot) return { ...a, balance: (a.balance || 0) - amt };
         return a;
@@ -938,7 +946,7 @@ export const useStore = create((set, get) => ({
     });
     cards = cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(p => p.id === c.linkedTo);
+      const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
       return parent ? { ...c, balance: parent.balance } : c;
     });
     const transactions = f.transactions.map(t => t.id === id ? { ...old, ...patch, id, amount: newAmt } : t);

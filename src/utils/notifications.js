@@ -313,3 +313,10 @@ export async function reschedulePlan(planning, habits = []) {
     dayPlans: planning.dayPlans || {},
   });
 }
+
+export function startKeepAliveService() {
+  if (Platform.OS !== 'android' || !FSN) return;
+  try {
+    // FSN.startKeepAlive(); // Supongamos que esto existe en el módulo nativo
+  } catch (e) {}
+}
