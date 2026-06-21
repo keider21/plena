@@ -71,6 +71,16 @@ export function getBusyBlocks(schedule, weekday) {
       color: '#F59E0B',
     });
   }
+  if (schedule.work2?.enabled && (schedule.work2.days || []).includes(weekday)) {
+    blocks.push({
+      start: toMin(schedule.work2.start),
+      end: toMin(schedule.work2.end),
+      label: schedule.work2.label || 'Trabajo (Turno 2)',
+      type: 'work',
+      icon: 'briefcase-outline',
+      color: '#F59E0B',
+    });
+  }
 
   (schedule.meals || []).forEach((meal) => {
     if (meal.enabled !== false) {

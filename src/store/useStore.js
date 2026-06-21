@@ -58,6 +58,10 @@ export const SUGGESTED_ACTIVITIES = [
   { id: 'finanzas', name: 'Finanzas', icon: 'wallet-outline', color: '#14B8A6', minutesPerDay: 20, preferred: 'noche', enabled: false },
   { id: 'lectura', name: 'Lectura', icon: 'book-outline', color: '#6366F1', minutesPerDay: 30, preferred: 'noche', enabled: false },
   { id: 'meditacion', name: 'Meditación', icon: 'moon-outline', color: '#A78BFA', minutesPerDay: 15, preferred: 'manana', enabled: false },
+  { id: 'reunion', name: 'Reunión', icon: 'people-outline', color: '#F97316', minutesPerDay: 30, preferred: 'tarde', enabled: false },
+  { id: 'estudio', name: 'Estudio', icon: 'book-outline', color: '#8B5CF6', minutesPerDay: 45, preferred: 'tarde', enabled: false },
+  { id: 'deporte', name: 'Deporte', icon: 'football-outline', color: '#10B981', minutesPerDay: 60, preferred: 'manana', enabled: false },
+  { id: 'ocio', name: 'Ocio / Relax', icon: 'tv-outline', color: '#EC4899', minutesPerDay: 45, preferred: 'noche', enabled: false },
 ];
 
 const DEFAULT_PLANNING = {
@@ -292,8 +296,13 @@ export const useStore = create((set, get) => ({
         userProfile: profileRaw ? JSON.parse(profileRaw) : {},
         onboardingDone: onbRaw === 'true',
         settings: settingsRaw ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsRaw) } : DEFAULT_SETTINGS,
-        planning: savedPlanning
-          ? { schedule: savedPlanning.schedule || null, activities: savedPlanning.activities || SUGGESTED_ACTIVITIES, log: savedPlanning.log || {}, dayPlans: savedPlanning.dayPlans || {} }
+                planning: savedPlanning
+          ? {
+              schedule: savedPlanning.schedule || null,
+              activities: (savedPlanning.activities && savedPlanning.activities.length >= 8) ? savedPlanning.activities : SUGGESTED_ACTIVITIES,
+              log: savedPlanning.log || {},
+              dayPlans: savedPlanning.dayPlans || {}
+            }
           : DEFAULT_PLANNING,
         calendar: calendarRaw
           ? { events: JSON.parse(calendarRaw).events || [], objectives: JSON.parse(calendarRaw).objectives || [] }
