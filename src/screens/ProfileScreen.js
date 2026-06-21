@@ -65,8 +65,10 @@ export default function ProfileScreen({ navigation }) {
             { text: 'Cancelar' },
             { text: 'Reparar ahora', onPress: async () => {
               const res = await reconcileAccounts();
-              const accountsDetail = (finance.accounts || []).map(a => `\n- ${a.name}: ${a.balance}`).join('');
-              Alert.alert('Sincronización completa', `Se procesaron ${res.count || 0} movimientos en ${res.accounts || 0} cuentas.\n\nDesglose de saldos:${accountsDetail}`);
+              const accList = (finance.accounts || []).map(a => `\n   • ${a.name}: ${a.balance} ${a.currency}`).join('');
+              const cardList = (finance.cards || []).filter(c => c.kind === 'debito' && !c.linkedTo).map(c => `\n   • ${c.bank} (Débito): ${c.balance} ${c.currency}`).join('');
+              const breakdown = `\n\nCUENTAS:${accList || '\n   (Ninguna)'}\n\nTARJETAS DÉBITO INDEP.:${cardList || '\n   (Ninguna)'}`;
+              Alert.alert('Sincronización completa', `Se procesaron ${res.count || 0} movimientos en ${res.accounts || 0} cuentas.\n\nDesglose de activos líquidos:${breakdown}`);
 
             }}
           ])

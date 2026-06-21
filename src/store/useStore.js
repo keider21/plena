@@ -328,9 +328,19 @@ export const useStore = create((set, get) => ({
   // Reconciliación: reconstruye saldos desde cero basándose en transacciones
     hardResetFinance: async () => {
     const f = get().finance;
-    const accounts = f.accounts.map(a => ({ ...a, initialBalance: 0, balance: 0 }));
-    const cards = f.cards.map(c => ({ ...c, initialBalance: 0, balance: 0, used: 0 }));
-    await get()._saveFinance({ ...f, accounts, cards });
+    // Poner a cero ABSOLUTO todo lo que puede generar saldos fantasma
+    const accounts = (f.accounts || []).map(a => ({ ...a, initialBalance: 0, balance: 0 }));
+    const cards = (f.cards || []).map(c => ({ ...c, initialBalance: 0, balance: 0, used: 0 }));
+    const debts = (f.debts || []).map(d => ({ ...d, amount: 0, paid: 0 }));
+    const loans = (f.loans || []).map(l => ({ ...l, amount: 0, installmentsPaid: 0, pending: 0 }));
+    const receivables = (f.receivables || []).map(r => ({ ...r, amount: 0, paid: 0 }));
+
+    await get()._saveFinance({
+      ...f,
+      accounts, cards, debts, loans, receivables,
+      transactions: [], // Opcional: borrar historial si el usuario quiere empezar de 0 total
+      payments: []
+    });
     return await get().reconcileAccounts();
   },
 
@@ -705,7 +715,7 @@ export const useStore = create((set, get) => ({
       const rootId = findRootAccId(accounts, id);
       const newBalance = edited.balance;
       // Sincronizar TODO el cluster recursivo
-      accounts = accounts.map(a => findRootAccId(accounts, a.id) === rootId ? { ...a, balance: newBalance } : a);
+      accounts = accounts.map(a => findRootAccId(accounts, a.id) === rootId ? { ...a, balance: newBalance, initialBalance: (a.id === id ? newBalance : a.initialBalance) } : a);
     } else {
       accounts = accounts.map(a => {
         const rootId = findRootAccId(accounts, a.id);
