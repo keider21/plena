@@ -114,7 +114,7 @@ export const useStore = create((set, get) => ({
       if (!error && data?.session && data?.user) {
         await get()._persistUser({ id: data.user.id, name, email, createdAt: today() });
         await get()._postAuthSync();
-        return { success: true };
+        return { success: true, count: txs.length, accounts: accounts.length };
       }
       if (!error && data?.user && !data?.session) {
         return { error: 'Revisa tu correo para confirmar la cuenta y luego inicia sesión.' };
@@ -326,6 +326,14 @@ export const useStore = create((set, get) => ({
   },
 
   // Reconciliación: reconstruye saldos desde cero basándose en transacciones
+    hardResetFinance: async () => {
+    const f = get().finance;
+    const accounts = f.accounts.map(a => ({ ...a, initialBalance: 0, balance: 0 }));
+    const cards = f.cards.map(c => ({ ...c, initialBalance: 0, balance: 0, used: 0 }));
+    await get()._saveFinance({ ...f, accounts, cards });
+    return await get().reconcileAccounts();
+  },
+
   reconcileAccounts: async () => {
     const f = get().finance;
     // Ordenar cronológicamente para reconstruir la historia

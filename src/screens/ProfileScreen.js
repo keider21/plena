@@ -12,7 +12,7 @@ import { computePoints, levelFor, progressToNext, LEVELS } from '../utils/levels
 
 export default function ProfileScreen({ navigation }) {
   const store = useStore();
-  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance, reconcileAccounts } = store;
+  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance, reconcileAccounts, hardResetFinance } = store;
   const [changelog, setChangelog] = useState(false);
   const points = useMemo(() => computePoints(store), [
     store.habits, store.habitLogs, store.finance?.transactions, store.planning?.dayPlans,
@@ -64,8 +64,10 @@ export default function ProfileScreen({ navigation }) {
           onPress: () => Alert.alert('Reparar', '¿Recalcular saldos basándose en tu historial de movimientos? Úsalo si los saldos de tus cuentas no cuadran.', [
             { text: 'Cancelar' },
             { text: 'Reparar ahora', onPress: async () => {
-              await reconcileAccounts();
-              Alert.alert('¡Listo!', 'Los saldos han sido reconciliados.');
+              const res = await reconcileAccounts();
+              const accountsDetail = (finance.accounts || []).map(a => `\n- ${a.name}: ${a.balance}`).join('');
+              Alert.alert('Sincronización completa', `Se procesaron ${res.count || 0} movimientos en ${res.accounts || 0} cuentas.\n\nDesglose de saldos:${accountsDetail}`);
+
             }}
           ])
         },
