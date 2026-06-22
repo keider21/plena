@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, Tex
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
+import { requestNotificationListenerPermission } from '../utils/notifications';
 import { COLORS, NEOM } from '../utils/theme';
 import { CURRENCY_LIST } from '../utils/currency';
 import { goalProgress } from '../utils/goals';
@@ -56,6 +57,21 @@ export default function ProfileScreen({ navigation }) {
       title: 'App y Seguridad',
       items: [
         { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.blue, onPress: () => navigation.navigate('Permisos') },
+        {
+          icon: 'notifications-circle-outline',
+          label: 'Activar lector de Yape/Plin',
+          color: COLORS.purpleLight,
+          onPress: async () => {
+            Alert.alert(
+              'Acceso a Notificaciones',
+              'Para detectar pagos de Yape/Plin automáticamente, debes conceder "Acceso a Notificaciones" a Vida Plena en la siguiente pantalla.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Ir a Ajustes', onPress: () => requestNotificationListenerPermission() }
+              ]
+            );
+          }
+        },
         { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
         {
           icon: 'build-outline',

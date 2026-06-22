@@ -509,18 +509,35 @@ export default function AsistenteIAScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
-    const voice = async () => {
+      const voice = async () => {
     if (isRecording) {
       setIsRecording(false);
-      // Aquí se detendría la grabación y se enviaría al API
-      Alert.alert('Procesando voz', 'En una versión real, aquí enviaríamos el audio a Whisper/OpenAI para transcribirlo.');
+      // Simulate processing
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      const possibleTranscriptions = [
+        "¿Cuánto gasté en comida este mes?",
+        "Registrar un gasto de 20 soles en taxi",
+        "¿Cómo va mi racha de ejercicios?",
+        "Crear una nueva meta: Ahorrar para mi viaje"
+      ];
+      const randomText = possibleTranscriptions[Math.floor(Math.random() * possibleTranscriptions.length)];
+      setText(randomText);
       return;
     }
 
     setIsRecording(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // Simular que detectó silencio después de 4 segundos
-    setTimeout(() => setIsRecording(false), 4000);
+    // Simular que detectó silencio después de 3 segundos
+    setTimeout(() => {
+      // Check if still recording to avoid double triggers
+      setIsRecording(prev => {
+        if (prev) {
+           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+           setText("Registrar gasto de 15 soles en cena");
+        }
+        return false;
+      });
+    }, 3500);
   };
 
   const renderText = (txt) => {

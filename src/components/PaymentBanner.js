@@ -19,6 +19,7 @@ export default function PaymentBanner() {
     if (!FullScreenNotif) return;
     const eventEmitter = new NativeEventEmitter(FullScreenNotif);
     const sub = eventEmitter.addListener('onPaymentNotification', (payload) => {
+      console.log('[Banner] Notificación recibida:', payload);
       setData(payload);
       show();
     });
