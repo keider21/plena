@@ -705,7 +705,6 @@ const styles = StyleSheet.create({
   modalInput: { backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: COLORS.text, fontSize: 16, borderWidth: 0.5, borderColor: COLORS.cardBorder },
   modalBtn: { backgroundColor: COLORS.purple, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   modalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-
   recordingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.bg + 'EE', zIndex: 100, alignItems: 'center', justifyContent: 'center', gap: 20 },
   recordingPulse: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.red + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.red },
   recordingText: { color: COLORS.text, fontSize: 18, fontWeight: '700' },

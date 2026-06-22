@@ -1346,7 +1346,6 @@ const styles = StyleSheet.create({
   payBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flex: 1, paddingVertical: 9, borderRadius: 10, backgroundColor: COLORS.bg3 },
   payBtnText: { fontSize: 13, fontWeight: '700' },
   payHint: { fontSize: 12, color: COLORS.textMuted, lineHeight: 17, marginBottom: 4 },
-  // estilos para desglose de préstamos
   loanKpis: { flexDirection: 'row', gap: 8 },
   loanKpi: { flex: 1, backgroundColor: COLORS.bg3, borderRadius: 10, padding: 10, alignItems: 'center' },
   loanKpiLbl: { fontSize: 10, color: COLORS.textMuted, fontWeight: '600' },
@@ -1359,15 +1358,12 @@ const styles = StyleSheet.create({
   splitCell: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   splitLbl: { fontSize: 11, color: COLORS.textMuted, fontWeight: '600' },
   splitVal: { fontSize: 13, fontWeight: '800' },
-  // estilos para historial de pagos
   histRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10, borderBottomWidth: 0.5, borderColor: COLORS.border },
   histAmt: { fontSize: 15, fontWeight: '700', color: COLORS.text },
   histSub: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   histDate: { fontSize: 12, color: COLORS.textSub, fontWeight: '600' },
-  // estilos para foto de boleta
   photoBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: COLORS.purple + '66', backgroundColor: COLORS.bg3 },
   photoBtnText: { color: COLORS.purpleLight, fontSize: 13, fontWeight: '600' },
-  // estilos para búsqueda
   searchBox: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 0.5, borderColor: COLORS.cardBorder, marginBottom: 10 },
   searchInput: { flex: 1, color: COLORS.text, fontSize: 13, paddingVertical: 0 },
   miniFilter: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: COLORS.bg3, borderWidth: 0.5, borderColor: COLORS.cardBorder },
@@ -1376,4 +1372,4 @@ const styles = StyleSheet.create({
   miniFilterTextOn: { color: '#fff' },
   filteredSummary: { backgroundColor: COLORS.bg2, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: COLORS.purple },
   filteredSummaryText: { fontSize: 12, color: COLORS.textSub },
-  miniFilter: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: COLORS.bg3, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+});
