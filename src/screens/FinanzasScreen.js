@@ -19,7 +19,13 @@ import Dropdown from '../components/Dropdown';
 import EmptyState from '../components/EmptyState';
 import PieChart from '../components/PieChart';
 
-const fmtDate = (d) => format(d, "d 'de' MMM", { locale: es });
+const fmtDate = (d) => format(d, "d 'de' MMM", { locale: es   miniFilter: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, backgroundColor: COLORS.bg3, borderWidth: 0.5, borderColor: COLORS.cardBorder },
+  miniFilterOn: { backgroundColor: COLORS.purple, borderColor: COLORS.purple },
+  miniFilterText: { fontSize: 11, fontWeight: '700', color: COLORS.textSub },
+  miniFilterTextOn: { color: '#fff' },
+  filteredSummary: { backgroundColor: COLORS.bg2, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, marginBottom: 12, borderLeftWidth: 3, borderLeftColor: COLORS.purple },
+  filteredSummaryText: { fontSize: 12, color: COLORS.textSub },
+});
 
 const TABS = [
   { key: 'resumen',      label: 'Resumen',      icon: 'bar-chart-outline',    color: '#7C5CE6' },
@@ -787,6 +793,7 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx, fi
   const accName = (id) => finance.accounts.find((a) => a.id === id)?.name || '—';
   const srcName = (t) => (t.cardId ? '💳 ' + (finance.cards.find((c) => c.id === t.cardId)?.bank || 'Tarjeta') : accName(t.accountId));
   const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all'); // all, ingreso, gasto
   const liquid = totalLiquid(finance, cur);
 
   // Filter transactions by period when no search term, show all when searching
@@ -796,6 +803,9 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx, fi
     if (filterAcc) {
       if (t.accountId !== filterAcc && t.toAccountId !== filterAcc && t.cardId !== filterAcc) return false;
     }
+
+    // Filtro por tipo
+    if (typeFilter !== 'all' && t.type !== typeFilter) return false;
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -883,12 +893,33 @@ function Resumen({ finance, cur, period, setPeriod, stats, onDelTx, onEditTx, fi
         );
       })()}
 
-      <Text style={styles.secTitle}>Últimos movimientos</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 8 }}>
+        <Text style={[styles.secTitle, { marginTop: 0, marginBottom: 0 }]}>Historial de movimientos</Text>
+        <View style={{ flexDirection: 'row', gap: 6 }}>
+          {['all', 'ingreso', 'gasto'].map(f => (
+            <TouchableOpacity key={f} onPress={() => setTypeFilter(f)} style={[styles.miniFilter, typeFilter === f && styles.miniFilterOn]}>
+              <Text style={[styles.miniFilterText, typeFilter === f && styles.miniFilterTextOn]}>
+                {f === 'all' ? 'Todo' : f === 'ingreso' ? 'Ingresos' : 'Gastos'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </View>
       <View style={styles.searchBox}>
         <Ionicons name="search-outline" size={16} color={COLORS.textMuted} />
         <TextInput style={styles.searchInput} value={search} onChangeText={setSearch} placeholder="Buscar movimiento, categoría o cuenta…" placeholderTextColor={COLORS.textMuted} />
         {search.length > 0 && <TouchableOpacity onPress={() => setSearch('')}><Ionicons name="close-circle" size={18} color={COLORS.textMuted} /></TouchableOpacity>}
       </View>
+      {recent.length > 0 && (
+        <View style={styles.filteredSummary}>
+          <Text style={styles.filteredSummaryText}>
+            Mostrando {recent.length} {recent.length === 1 ? 'movimiento' : 'movimientos'} •
+            Total: <Text style={{ fontWeight: 'bold', color: recent.reduce((a, b) => a + (b.type === 'ingreso' ? b.amount : -b.amount), 0) >= 0 ? COLORS.green : COLORS.red }}>
+              {formatMoney(recent.reduce((a, b) => a + (b.type === 'ingreso' ? b.amount : -b.amount), 0), cur)}
+            </Text>
+          </Text>
+        </View>
+      )}
       {recent.length === 0 ? (
         <Text style={styles.hint}>{search.trim() ? `Sin resultados para "${search}".` : 'Sin movimientos en este periodo. Cambia el filtro o usa el botón +.'}</Text>
       ) : (

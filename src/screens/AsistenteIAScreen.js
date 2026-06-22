@@ -23,6 +23,9 @@ const EXAMPLES = [
 const WELCOME = (name) => ({
   from: 'ia',
   text: `Hola 👋 Soy ${name}. Conozco toda la app Vida Plena: finanzas, hábitos, metas, áreas, plan, mentalidad y más. Probá preguntarme algo o tocá un ejemplo abajo.`,
+  recordingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.bg + 'EE', zIndex: 100, alignItems: 'center', justifyContent: 'center', gap: 20 },
+  recordingPulse: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.red + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.red },
+  recordingText: { color: COLORS.text, fontSize: 18, fontWeight: '700' },
 });
 
 const norm = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
@@ -417,6 +420,7 @@ export default function AsistenteIAScreen() {
   const aiName = settings?.aiName || 'Asistente';
   const [messages, setMessages] = useState([WELCOME(aiName)]);
   const [text, setText] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
   const [ratings, setRatings] = useState({});
   const [namingModal, setNamingModal] = useState(!settings?.aiName);
   const [newName, setNewName] = useState(aiName);
@@ -505,7 +509,19 @@ export default function AsistenteIAScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
-  const voice = () => Alert.alert('Voz en desarrollo', 'El dictado por voz necesita un módulo nativo. Lo activaremos con un development build más adelante.');
+    const voice = async () => {
+    if (isRecording) {
+      setIsRecording(false);
+      // Aquí se detendría la grabación y se enviaría al API
+      Alert.alert('Procesando voz', 'En una versión real, aquí enviaríamos el audio a Whisper/OpenAI para transcribirlo.');
+      return;
+    }
+
+    setIsRecording(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Simular que detectó silencio después de 4 segundos
+    setTimeout(() => setIsRecording(false), 4000);
+  };
 
   const renderText = (txt) => {
     // Renderiza **negrita** simple
@@ -537,6 +553,14 @@ export default function AsistenteIAScreen() {
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {isRecording && (
+          <View style={styles.recordingOverlay}>
+            <View style={styles.recordingPulse}>
+              <Ionicons name="mic" size={40} color={COLORS.red} />
+            </View>
+            <Text style={styles.recordingText}>Escuchando...</Text>
+          </View>
+        )}
         <ScrollView ref={scrollRef} style={{ flex: 1 }} contentContainerStyle={styles.chat} showsVerticalScrollIndicator={false}>
           {messages.map((m, i) => (
             <View key={i} style={m.from === 'ia' ? { alignSelf: 'flex-start', maxWidth: '88%' } : null}>
@@ -602,7 +626,9 @@ export default function AsistenteIAScreen() {
         </ScrollView>
 
         <View style={styles.inputBar}>
-          <TouchableOpacity style={styles.micBtn} onPress={voice}><Ionicons name="mic-outline" size={22} color={COLORS.purpleLight} /></TouchableOpacity>
+          <TouchableOpacity style={[styles.micBtn, isRecording && { backgroundColor: COLORS.red + '22', borderColor: COLORS.red }]} onPress={voice}>
+            <Ionicons name={isRecording ? "stop" : "mic-outline"} size={22} color={isRecording ? COLORS.red : COLORS.purpleLight} />
+          </TouchableOpacity>
           <TextInput
             style={styles.input}
             value={text}
