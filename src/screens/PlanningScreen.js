@@ -191,13 +191,18 @@ export default function PlanningScreen({ navigation }) {
 
   // Llenar hueco → crea una instancia SOLO para hoy (no toca la plantilla → sin duplicados)
   const openGap = (seg) => { setGapName(''); setGap(seg); };
-  const fillGap = async (name, color, icon, activityId) => {
+    const fillGap = async (name, color, icon, activityId) => {
     if (!gap || !name || !name.trim()) return;
     const id = 'inst_' + Date.now();
     const inst = { id, activityId: activityId || id, name: name.trim(), icon: icon || 'flash-outline', color: color || COLORS.purple, start: toTime(gap.start), end: toTime(gap.end) };
-    await saveDayPlan(todayStr, [...ensureToday(), inst]);
+
+    // Feedback visual inmediato
+    const newInstances = [...ensureToday(), inst];
+    await saveDayPlan(todayStr, newInstances);
+
     refreshAlarms();
-    setGap(null); setGapName('');
+    setGap(null);
+    setGapName('');
   };
 
   // Edición de una actividad / hueco / bloque fijo SOLO para hoy
@@ -498,7 +503,7 @@ export default function PlanningScreen({ navigation }) {
             </View>
             <Text style={styles.gapSub}>O escribe una nueva:</Text>
             <View style={styles.gapAddRow}>
-              <TextInput style={styles.gapInput} value={gapName} onChangeText={setGapName} placeholder="Ej. Estudiar, llamar a..." placeholderTextColor={COLORS.textMuted} />
+              <TextInput style={styles.gapInput} value={gapName} onChangeText={setGapName} placeholder="Ej. Estudiar, llamar a..." placeholder="Nombre de la actividad" placeholderTextColor={COLORS.textMuted} />
               <TouchableOpacity style={styles.gapAddBtn} onPress={() => fillGap(gapName, COLORS.purple)}><Ionicons name="add" size={22} color="#fff" /></TouchableOpacity>
             </View>
           </View>
@@ -529,7 +534,7 @@ export default function PlanningScreen({ navigation }) {
                       })}
                     </View>
                     <Text style={[styles.gapSub, { marginTop: 12 }]}>Nombre</Text>
-                    <TextInput style={styles.gapInput} value={instEdit.name} onChangeText={(v) => setInstEdit((e) => ({ ...e, name: v }))} placeholderTextColor={COLORS.textMuted} />
+                    <TextInput style={styles.gapInput} value={instEdit.name} onChangeText={(v) => setInstEdit((e) => ({ ...e, name: v }))} placeholder="Nombre de la actividad" placeholderTextColor={COLORS.textMuted} />
                   </>
                 )}
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>

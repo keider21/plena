@@ -5,6 +5,7 @@ import { COLORS } from '../utils/theme';
 import {
   getNotifPermission, requestNotifPermission, requestIgnoreBattery,
   requestExactAlarm, openAppNotifSettings, sendTestNotification,
+  requestNotificationListenerPermission,
 } from '../utils/notifications';
 
 const NEED_BUILD = 'Esta función necesita que regeneres el dev build (npx eas-cli build -p android --profile development) para que el permiso nativo quede instalado.';
@@ -45,6 +46,7 @@ export default function PermisosScreen({ navigation }) {
   const bateria = guard(requestIgnoreBattery);
   const alarmas = guard(requestExactAlarm);
   const ajustes = guard(openAppNotifSettings);
+  const leerNotif = guard(requestNotificationListenerPermission);
   const probar = guard(async () => { await sendTestNotification('Prueba'); Alert.alert('Enviada', 'En 3 segundos deberías ver la notificación.'); });
 
   const permLabel = perm === 'granted' ? '✅ Concedido' : perm === 'denied' ? '❌ Denegado' : perm === 'web' ? 'No aplica en web' : `Estado: ${perm}`;
@@ -74,6 +76,9 @@ export default function PermisosScreen({ navigation }) {
 
         <Item icon="options" color={COLORS.blue} title="Ajustes de notificaciones"
           desc="Abre los ajustes de notificación de Vida Plena (sonido, prioridad, pantalla)." btnLabel="Abrir ajustes" onPress={ajustes} />
+
+        <Item icon="reader-outline" color={COLORS.pink} title="Leer notificaciones (Yape/Plin)"
+          desc="Permite que la app detecte cuando recibes un pago por Yape o Plin para ayudarte a registrarlo." btnLabel="Permitir lectura" onPress={leerNotif} />
 
         <Item icon="flash" color={COLORS.purple} title="Probar"
           desc="Envía una notificación de prueba en 3 segundos." btnLabel="Enviar prueba" onPress={probar} />

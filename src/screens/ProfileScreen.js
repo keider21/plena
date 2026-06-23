@@ -3,6 +3,7 @@ import { View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Modal, Tex
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useStore } from '../store/useStore';
+import { requestNotificationListenerPermission } from '../utils/notifications';
 import { COLORS, NEOM } from '../utils/theme';
 import { CURRENCY_LIST } from '../utils/currency';
 import { goalProgress } from '../utils/goals';
@@ -12,7 +13,7 @@ import { computePoints, levelFor, progressToNext, LEVELS } from '../utils/levels
 
 export default function ProfileScreen({ navigation }) {
   const store = useStore();
-  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance } = store;
+  const { currentUser, logout, habits, goals, settings, setCurrency, setSetting, getTodayStats, getWeeklyScore, finance, reconcileAccounts, hardResetFinance } = store;
   const [changelog, setChangelog] = useState(false);
   const points = useMemo(() => computePoints(store), [
     store.habits, store.habitLogs, store.finance?.transactions, store.planning?.dayPlans,
@@ -43,15 +44,61 @@ export default function ProfileScreen({ navigation }) {
     ]);
   };
 
-  const MENU = [
-    { icon: 'settings-outline', label: 'Categorías y subcategorías', color: COLORS.purple, onPress: () => navigation.navigate('Settings') },
-    { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.blue, onPress: () => navigation.navigate('Permisos') },
-    { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
-    { icon: 'barbell-outline', label: 'Editar mis hábitos', color: COLORS.amber, onPress: () => navigation.navigate('Habitos') },
-    { icon: 'star-outline', label: 'Editar mis metas', color: '#EC4899', onPress: () => navigation.navigate('Metas') },
-    { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan 100% localmente en tu teléfono. No se envía nada a servidores.') },
-    { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
-    { icon: 'terminal-outline', label: 'Ver logs de la app', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
+  const MENU_GROUPS = [
+    {
+      title: 'Personalización',
+      items: [
+        { icon: 'settings-outline', label: 'Categorías y subcategorías', color: COLORS.purple, onPress: () => navigation.navigate('Settings') },
+        { icon: 'barbell-outline', label: 'Gestionar mis hábitos', color: COLORS.amber, onPress: () => navigation.navigate('Habitos') },
+        { icon: 'star-outline', label: 'Gestionar mis metas', color: '#EC4899', onPress: () => navigation.navigate('Metas') },
+      ]
+    },
+    {
+      title: 'App y Seguridad',
+      items: [
+        { icon: 'notifications-outline', label: 'Notificaciones y permisos', color: COLORS.blue, onPress: () => navigation.navigate('Permisos') },
+        {
+          icon: 'notifications-circle-outline',
+          label: 'Activar lector de Yape/Plin',
+          color: COLORS.purpleLight,
+          onPress: async () => {
+            Alert.alert(
+              'Acceso a Notificaciones',
+              'Para detectar pagos de Yape/Plin automáticamente, debes conceder "Acceso a Notificaciones" a Vida Plena en la siguiente pantalla.',
+              [
+                { text: 'Cancelar', style: 'cancel' },
+                { text: 'Ir a Ajustes', onPress: () => requestNotificationListenerPermission() }
+              ]
+            );
+          }
+        },
+        { icon: 'download-outline', label: 'Exportar movimientos (CSV)', color: COLORS.green, onPress: handleExport },
+        {
+          icon: 'build-outline',
+          label: 'Reparar saldos bancarios',
+          color: COLORS.amber,
+          onPress: () => Alert.alert('Reparar', '¿Recalcular saldos basándose en tu historial de movimientos? Úsalo si los saldos de tus cuentas no cuadran.', [
+            { text: 'Cancelar' },
+            { text: 'Reparar ahora', onPress: async () => {
+              const res = await reconcileAccounts();
+              const accList = (finance.accounts || []).map(a => `\n   • ${a.name}: ${a.balance} ${a.currency}`).join('');
+              const cardList = (finance.cards || []).filter(c => c.kind === 'debito' && !c.linkedTo).map(c => `\n   • ${c.bank} (Débito): ${c.balance} ${c.currency}`).join('');
+              const breakdown = `\n\nCUENTAS:${accList || '\n   (Ninguna)'}\n\nTARJETAS DÉBITO INDEP.:${cardList || '\n   (Ninguna)'}`;
+              Alert.alert('Sincronización completa', `Se procesaron ${res.count || 0} movimientos en ${res.accounts || 0} cuentas.\n\nDesglose de activos líquidos:${breakdown}`);
+
+            }}
+          ])
+        },
+        { icon: 'shield-outline', label: 'Privacidad y datos', color: COLORS.blue, onPress: () => Alert.alert('Privacidad', 'Tus datos se guardan localmente y se sincronizan de forma segura con tu cuenta de Supabase.') },
+      ]
+    },
+    {
+      title: 'Soporte y Sistema',
+      items: [
+        { icon: 'help-circle-outline', label: 'Ayuda y soporte', color: COLORS.textSub, onPress: () => Alert.alert('Ayuda', 'Para soporte: contacta con nosotros en el perfil de GitHub.') },
+        { icon: 'terminal-outline', label: 'Logs de desarrollo', color: '#A78BFA', onPress: () => navigation.navigate('DevLogs') },
+      ]
+    }
   ];
 
   return (
@@ -59,8 +106,8 @@ export default function ProfileScreen({ navigation }) {
 
       <View style={styles.header}>
         <View style={styles.avatarArea}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
+          <View style={[styles.avatar, { backgroundColor: COLORS.purple }]}>
+            <Text style={[styles.avatarText, { color: '#fff' }]}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
           </View>
           <Text style={styles.userName}>{currentUser?.name}</Text>
           <Text style={styles.userEmail}>{currentUser?.email}</Text>
@@ -166,23 +213,27 @@ export default function ProfileScreen({ navigation }) {
         <Text style={styles.versionNote}>Próximamente más opciones de tema</Text>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Configuración</Text>
-        {MENU.map((m, i) => (
-          <TouchableOpacity
-            key={i}
-            onPress={m.onPress}
-            style={styles.menuRow}
-            activeOpacity={0.7}
-          >
-            <View style={[styles.menuIcon, { backgroundColor: m.color + '22' }]}>
-              <Ionicons name={m.icon} size={18} color={m.color} />
-            </View>
-            <Text style={styles.menuLabel}>{m.label}</Text>
-            <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
-          </TouchableOpacity>
-        ))}
-      </View>
+      {MENU_GROUPS.map((group, gIdx) => (
+        <View key={gIdx} style={styles.section}>
+          <Text style={styles.sectionTitle}>{group.title}</Text>
+          <View style={styles.groupCard}>
+            {group.items.map((m, i) => (
+              <TouchableOpacity
+                key={i}
+                onPress={m.onPress}
+                style={[styles.menuRow, i === group.items.length - 1 && { borderBottomWidth: 0 }]}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.menuIcon, { backgroundColor: m.color + '22' }]}>
+                  <Ionicons name={m.icon} size={18} color={m.color} />
+                </View>
+                <Text style={styles.menuLabel}>{m.label}</Text>
+                <Ionicons name="chevron-forward" size={16} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      ))}
 
       <View style={styles.section}>
         <TouchableOpacity onPress={handleLogout} style={styles.logoutBtn} activeOpacity={0.8}>
@@ -244,8 +295,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: COLORS.border, marginBottom: 4,
   },
   avatarArea: { alignItems: 'center', gap: 8 },
-  avatar: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.purple, marginBottom: 4, ...NEOM.float },
-  avatarText: { fontSize: 32, fontWeight: '800', color: '#fff' },
+  avatar: { width: 80, height: 80, borderRadius: 24, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.purple, marginBottom: 4, ...NEOM.float, shadowColor: COLORS.purple },
+  avatarText: { fontSize: 32, fontWeight: '800', color: COLORS.white },
   userName: { fontSize: 20, fontWeight: '700', color: COLORS.text },
   userEmail: { fontSize: 13, color: COLORS.textSub },
   memberBadge: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: COLORS.amberDim, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 20, marginTop: 4 },
@@ -290,9 +341,10 @@ const styles = StyleSheet.create({
   currencyTxtOn: { color: COLORS.purple, fontWeight: '700' },
 
   // ── Menú de configuración ─────────────────────────────────────────────────────
-  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderColor: COLORS.border },
+  groupCard: { ...NEOM.card, paddingHorizontal: 14, paddingVertical: 4 },
+  menuRow: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, borderBottomWidth: 1, borderColor: COLORS.border + '44' },
   menuIcon: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
-  menuLabel: { flex: 1, fontSize: 14, color: COLORS.text },
+  menuLabel: { flex: 1, fontSize: 14, color: COLORS.text, fontWeight: '500' },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, backgroundColor: COLORS.redDim, borderRadius: 14 },
   logoutText: { fontSize: 15, color: COLORS.red, fontWeight: '600' },
 

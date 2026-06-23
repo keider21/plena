@@ -5,7 +5,7 @@ import * as Haptics from 'expo-haptics';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useStore } from '../store/useStore';
-import { categoryColor } from '../utils/finance';
+import { categoryColor, totalLiquid } from '../utils/finance';
 import { COLORS, NEOM, CAT_COLORS } from '../utils/theme';
 import { formatMoney } from '../utils/currency';
 import { goalProgress, catOf } from '../utils/goals';
@@ -21,7 +21,7 @@ const QUOTES = [
 ];
 
 export default function DashboardScreen({ navigation }) {
-  const { currentUser, habits, habitLogs, goals, settings, getTodayStats, getWeeklyScore, getMonthlyStats, finance: storeFinance, getHabitStreak, logHabit } = useStore();
+  const { currentUser, habits, habitLogs, goals, settings, getTodayStats, getWeeklyScore, getMonthlyStats, finance: storeFinance, getHabitStreak, logHabit, dismissPendingNotif } = useStore();
   const cur = settings.currency;
   const stats = getTodayStats();
   const weekly = getWeeklyScore();
@@ -75,7 +75,9 @@ export default function DashboardScreen({ navigation }) {
   ];
   const goFinance = (q) => { setQuickMenu(false); navigation.navigate('Finanzas', { quickAdd: q }); };
 
-  const realBalance = (storeFinance?.accounts || []).filter(a => !a.linkedTo).reduce((s, a) => s + (a.balance || 0), 0);
+  const realBalance = (typeof totalLiquid === 'function') ? totalLiquid(storeFinance, cur) : (storeFinance?.accounts || []).filter(a => !a.linkedTo && a.currency === cur).reduce((s, a) => s + (a.balance || 0), 0);
+
+  const pendingNotifs = storeFinance?.pendingFromNotifs || [];
 
   return (
     <View style={{ flex: 1 }}>
@@ -89,7 +91,7 @@ export default function DashboardScreen({ navigation }) {
             <Text style={styles.heroDate}>{dayName}</Text>
           </View>
           <TouchableOpacity onPress={() => navigation.navigate('Profile')} style={styles.avatarBtn}>
-            <View style={styles.avatar}>
+            <View style={[styles.avatar, { backgroundColor: COLORS.purple }]}>
               <Text style={styles.avatarText}>{currentUser?.name?.charAt(0).toUpperCase()}</Text>
             </View>
           </TouchableOpacity>
@@ -123,25 +125,46 @@ export default function DashboardScreen({ navigation }) {
         </View>
       </View>
 
+      {pendingNotifs.length > 0 && (
+        <View style={styles.notifSection}>
+          {pendingNotifs.map((n) => (
+            <TouchableOpacity key={n.id} style={styles.notifCard} onPress={() => navigation.navigate('Finanzas', { quickAdd: 'gasto', amount: n.amount, note: n.title })}>
+              <View style={styles.notifIcon}><Ionicons name="notifications" size={18} color="#fff" /></View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.notifTitle}>Pago detectado</Text>
+                <Text style={styles.notifDesc}>Recibiste un {n.app} por {formatMoney(n.amount, cur)}. ¿Registrar?</Text>
+              </View>
+              <TouchableOpacity onPress={() => dismissPendingNotif(n.id)} style={{ padding: 4 }}><Ionicons name="close" size={18} color={COLORS.textMuted} /></TouchableOpacity>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
+
       <TouchableOpacity activeOpacity={0.9} onPress={() => navigation.navigate('Finanzas')} style={styles.balanceCard}>
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Text style={styles.balanceLbl}>Saldo de cuentas</Text>
+          <Text style={styles.balanceLbl}>Dinero disponible</Text>
           <View style={[styles.balanceTrend, { backgroundColor: (realBalance >= 0 ? COLORS.greenDim : COLORS.redDim) }]}>
-            <Ionicons name={realBalance >= 0 ? 'trending-up' : 'trending-down'} size={16} color={realBalance >= 0 ? COLORS.green : COLORS.red} />
+            <Ionicons name={realBalance >= 0 ? 'wallet-outline' : 'warning-outline'} size={16} color={realBalance >= 0 ? COLORS.green : COLORS.red} />
           </View>
         </View>
-        <Text style={[styles.balanceVal, { color: realBalance >= 0 ? COLORS.green : COLORS.red }]}
+        <Text style={[styles.balanceVal, { color: realBalance >= 0 ? COLORS.text : COLORS.red }]}
           numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.4}>
-          {realBalance >= 0 ? '+' : ''}{formatMoney(realBalance, cur)}
+          {formatMoney(realBalance, cur)}
         </Text>
-        <View style={{ flexDirection: 'row', gap: 16, marginTop: 10 }}>
-          <View style={styles.balanceSubChip}>
-            <Text style={[styles.balanceSubAmt, { color: COLORS.green }]}>↑ {formatMoney(finance.ingresos, cur)}</Text>
-            <Text style={styles.balanceSubLbl}>ingresos mes</Text>
+        <View style={styles.balanceDivider} />
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View>
+              <Text style={[styles.miniStatLbl, { color: COLORS.green }]}>INGRESOS</Text>
+              <Text style={styles.miniStatVal}>{formatMoney(finance.ingresos, cur)}</Text>
+            </View>
+            <View>
+              <Text style={[styles.miniStatLbl, { color: COLORS.red }]}>GASTOS</Text>
+              <Text style={styles.miniStatVal}>{formatMoney(finance.gastos, cur)}</Text>
+            </View>
           </View>
-          <View style={styles.balanceSubChip}>
-            <Text style={[styles.balanceSubAmt, { color: COLORS.red }]}>↓ {formatMoney(finance.gastos, cur)}</Text>
-            <Text style={styles.balanceSubLbl}>gastos mes</Text>
+          <View style={styles.balanceBadge}>
+             <Text style={styles.balanceBadgeText}>Este mes</Text>
           </View>
         </View>
       </TouchableOpacity>
@@ -358,6 +381,11 @@ export default function DashboardScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   bg: { flex: 1, backgroundColor: COLORS.bg },
+  notifSection: { paddingHorizontal: 14, paddingTop: 14, gap: 10 },
+  notifCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: COLORS.bg2, padding: 14, borderRadius: 18, borderWidth: 1, borderColor: COLORS.purple + '44', ...NEOM.card },
+  notifIcon: { width: 36, height: 36, borderRadius: 10, backgroundColor: COLORS.purple, alignItems: 'center', justifyContent: 'center' },
+  notifTitle: { fontSize: 13, fontWeight: '700', color: COLORS.text },
+  notifDesc: { fontSize: 12, color: COLORS.textSub, marginTop: 1 },
   container: { paddingBottom: 20 },
 
   // ── Hero header (neumorphismo claro) ──────────────────────────────────────
@@ -400,9 +428,11 @@ const styles = StyleSheet.create({
   balanceLbl: { fontSize: 11, color: COLORS.textSub, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   balanceTrend: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
   balanceVal: { fontSize: 36, fontWeight: '800', marginTop: 6, letterSpacing: -1 },
-  balanceSubChip: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, backgroundColor: COLORS.bg3 },
-  balanceSubAmt: { fontSize: 13, fontWeight: '700' },
-  balanceSubLbl: { fontSize: 11, color: COLORS.textSub, fontWeight: '600' },
+  balanceDivider: { height: 1, backgroundColor: COLORS.border + '44', marginVertical: 14 },
+  miniStatLbl: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, marginBottom: 2 },
+  miniStatVal: { fontSize: 14, fontWeight: '700', color: COLORS.text },
+  balanceBadge: { backgroundColor: COLORS.purpleDim, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  balanceBadgeText: { fontSize: 10, color: COLORS.purple, fontWeight: '800', textTransform: 'uppercase' },
 
   // ── Secciones ───────────────────────────────────────────────────────────────
   section: { paddingHorizontal: 16, paddingTop: 20 },

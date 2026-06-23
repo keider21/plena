@@ -71,6 +71,16 @@ export function getBusyBlocks(schedule, weekday) {
       color: '#F59E0B',
     });
   }
+  if (schedule.work2?.enabled && (schedule.work2.days || []).includes(weekday)) {
+    blocks.push({
+      start: toMin(schedule.work2.start),
+      end: toMin(schedule.work2.end),
+      label: schedule.work2.label || 'Trabajo (Turno 2)',
+      type: 'work',
+      icon: 'briefcase-outline',
+      color: '#F59E0B',
+    });
+  }
 
   (schedule.meals || []).forEach((meal) => {
     if (meal.enabled !== false) {
@@ -247,27 +257,40 @@ export function buildDayWith(schedule, weekday, instances, gapThreshold = 30) {
   const overrides = (instances || []).filter((it) => it.kind === 'fixedOverride');
   const sleepOvr = (instances || []).find((it) => it.kind === 'sleepOverride');
   const activityInstances = (instances || []).filter((it) => it.kind !== 'fixedOverride' && it.kind !== 'sleepOverride');
+
   // Si el usuario cambió las horas de sueño solo para hoy, usar esas
   const sch = sleepOvr ? { ...schedule, wakeTime: sleepOvr.wakeTime, sleepTime: sleepOvr.sleepTime } : schedule;
 
   // Bloques originales (plantilla) para ese día
   const busyOriginal = getBusyBlocks(sch, weekday);
-  // Quitamos los bloques que tengan override y los reemplazamos por los del override
-  const busy = busyOriginal
-    .filter((b) => !overrides.some((o) => o.type === (b.type === 'work' ? 'fixed' : b.type === 'meal' ? 'fixed' : b.type === 'nap' ? 'fixed' : b.type)))
-    .map((b) => {
-      const match = overrides.find((o) => {
-        if (o.type === 'fixed') return true; // override global
-        return false;
-      });
-      if (!match) return b;
-      return { ...b, start: toMin(match.start), end: toMin(match.end), label: match.label || b.label, icon: match.icon || b.icon, color: match.color || b.color };
-    });
 
-  // Los overrides específicos (cambiar nombre/hora de un bloque en particular) se aplican como colocados
-  const overriddenPlaced = overrides
-    .filter((o) => o.type !== 'fixed')
-    .map((o) => ({
+  // Bloques resultantes: empezamos con los de la plantilla
+  let busy = [...busyOriginal];
+
+  // Aplicar overrides específicos: si un override coincide en tipo con uno de la plantilla, lo reemplaza
+  // Si no coincide (o es un bloque extra), se añadirá después.
+  const matchedOverridesIds = new Set();
+
+  busy = busy.map(b => {
+    const ovr = overrides.find(o => o.label === b.label || (o.type === b.type && b.type !== 'meal'));
+    if (ovr) {
+      matchedOverridesIds.add(ovr.id);
+      return {
+        ...b,
+        start: toMin(ovr.start),
+        end: toMin(ovr.end),
+        label: ovr.label || b.label,
+        icon: ovr.icon || b.icon,
+        color: ovr.color || b.color
+      };
+    }
+    return b;
+  });
+
+  // Los overrides que no matchearon nada de la plantilla se tratan como bloques colocados extra
+  const extraFixed = overrides
+    .filter(o => !matchedOverridesIds.has(o.id))
+    .map(o => ({
       start: toMin(o.start),
       end: toMin(o.end),
       label: o.label,
@@ -278,13 +301,14 @@ export function buildDayWith(schedule, weekday, instances, gapThreshold = 30) {
     }));
 
   const placed = [
-    ...overriddenPlaced,
+    ...extraFixed,
     ...activityInstances.map((it) => ({
       start: toMin(it.start), end: toMin(it.end), label: it.name,
       icon: it.icon || 'ellipse-outline', color: it.color || '#7C3AED',
       type: 'activity', activityId: it.activityId || it.id, instanceId: it.id,
     })),
   ];
+
   return assembleDayWith(sch, weekday, busy, placed, gapThreshold);
 }
 

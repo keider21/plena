@@ -8,15 +8,11 @@ const FSN = Platform.OS === 'android' ? NativeModules.FullScreenNotif : null;
 
 const isWeb = Platform.OS === 'web';
 
-// Cuántos días por delante programamos alarmas concretas. Se reprograma en cada
-// apertura de la app y en cada cambio del plan, así que 14 días dan margen de
-// sobra aunque no abras la app por una semana.
 const SCHEDULE_DAYS = 14;
 const SCHED_IDS_KEY = 'fsn_scheduled_ids';
 
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
-// ── IDs nativos persistidos (para cancelar EXACTAMENTE lo programado antes) ──
 async function loadScheduledIds() {
   try { const raw = await AsyncStorage.getItem(SCHED_IDS_KEY); return raw ? JSON.parse(raw) : []; }
   catch { return []; }
@@ -31,7 +27,6 @@ async function cancelAllNative() {
   await saveScheduledIds([]);
 }
 
-// Muestra las notificaciones cuando la app está en primer plano
 if (!isWeb) {
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
@@ -47,7 +42,6 @@ const CH_DEFAULT = 'recordatorios';
 const CH_ALARM = 'alarmas';
 const T = () => Notifications.SchedulableTriggerInputTypes;
 
-// ─── Canales + permisos ──────────────────────────────────────
 async function ensureChannels() {
   if (isWeb || Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync(CH_DEFAULT, {
@@ -83,7 +77,6 @@ export async function setupNotifications() {
   } catch (e) { console.log('notif setup error:', e); return false; }
 }
 
-// Compat: nombre antiguo usado por DashboardScreen
 export async function registerForPushNotifications() {
   return setupNotifications();
 }
@@ -94,7 +87,6 @@ export function addResponseListener(cb) {
   catch (e) { return { remove() {} }; }
 }
 
-// ─── Helper base de programación ────────────────────────────
 async function schedule(id, content, trigger) {
   if (isWeb) return null;
   try {
@@ -107,21 +99,16 @@ async function schedule(id, content, trigger) {
   }
 }
 
-// ─── Programa UNA alarma de actividad en un instante concreto ───
-// Nativo: AlarmManager → AlarmReceiver → PopupActivity (sobre pantalla bloqueada)
 function scheduleActivityAt(id, title, body, data, when) {
   const dataJson = JSON.stringify(data);
-  if (FSN) {
+  if (FSN && FSN.schedule) {
     FSN.schedule(id, title, body, when.getTime(), dataJson);
   } else {
-    // Fallback expo-notifications (iOS / expo-go)
     schedule(id, { title, body, sound: 'default', categoryIdentifier: 'actividad', data },
       { type: T().DATE, date: when, channelId: CH_ALARM });
   }
 }
 
-// Compat: re-agenda una sola actividad +7 días (usado por overlay en primer plano).
-// Con la ventana de 14 días normalmente no hace falta, pero lo mantenemos por seguridad.
 export function rescheduleActivity(notifId, title, body, data = {}) {
   if (isWeb || !notifId) return;
   const when = new Date();
@@ -132,11 +119,9 @@ export function rescheduleActivity(notifId, title, body, data = {}) {
     when.setTime(Date.now() + 7 * 24 * 60 * 60 * 1000);
   }
   scheduleActivityAt(notifId, title, body, data, when);
-  // Persistir el id para que se cancele en la próxima reprogramación
   loadScheduledIds().then((ids) => { if (!ids.includes(notifId)) saveScheduledIds([...ids, notifId]); });
 }
 
-// ─── Tipos de trigger compuestos ────────────────────────────
 export function scheduleWeekly(id, title, body, jsDay, hour, minute, { alarm = false, data = {} } = {}) {
   return schedule(
     id,
@@ -183,7 +168,6 @@ export async function sendTestNotification(name = 'Prueba') {
   );
 }
 
-// ─── Hábitos ────────────────────────────────────────────────
 export async function scheduleHabitReminder(habitId, habitName, timeStr) {
   if (isWeb || !timeStr) return;
   await cancelHabitReminder(habitId);
@@ -200,7 +184,6 @@ export async function cancelAll() {
   try { await Notifications.cancelAllScheduledNotificationsAsync(); } catch (e) {}
 }
 
-// ─── Permisos del sistema ────────────────────────────────────
 const PKG = 'com.vidaplena.app';
 const IL = () => require('expo-intent-launcher');
 
@@ -227,7 +210,16 @@ export async function openAppNotifSettings() {
   await IL().startActivityAsync('android.settings.APP_NOTIFICATION_SETTINGS', { extra: { 'android.provider.extra.APP_PACKAGE': PKG } });
 }
 
-// ─── Migración: limpia alarmas viejas con IDs por día-de-semana (build anterior) ──
+export async function requestNotificationListenerPermission() {
+  if (Platform.OS !== 'android') return;
+  const il = IL();
+  try {
+    await il.startActivityAsync('android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS');
+  } catch (e) {
+    console.log('Error al abrir ajustes de acceso a notificaciones:', e);
+  }
+}
+
 function cancelLegacyNativeActivities(activities) {
   if (!FSN || !activities?.length) return;
   for (const act of activities) {
@@ -238,17 +230,13 @@ function cancelLegacyNativeActivities(activities) {
   }
 }
 
-// ─── Reprogramación masiva (ventana concreta de 14 días) ─────
-// Programa una alarma por cada ocurrencia de actividad en los próximos 14 días,
-// usando los cambios manuales del día (dayPlans) cuando existen, o la plantilla.
 export async function rescheduleAll({ habits = [], schedule: sch, activities = [], dayPlans = {} } = {}) {
   if (isWeb) return;
   await ensureChannels();
-  await cancelAll();                         // expo-notifications
-  await cancelAllNative();                   // alarmas nativas programadas antes (lista persistida)
-  cancelLegacyNativeActivities(activities);  // alarmas del build anterior
+  await cancelAll();
+  await cancelAllNative();
+  cancelLegacyNativeActivities(activities);
 
-  // Hábitos (expo daily)
   for (const hb of habits.filter((x) => x.active && x.reminder)) {
     const [h, m] = hb.reminder.split(':').map(Number);
     await scheduleDaily(`habit_${hb.id}`, `⏰ ${hb.name}`, 'Es momento de tu hábito.', h || 0, m || 0, { data: { type: 'habit', id: hb.id } });
@@ -256,7 +244,6 @@ export async function rescheduleAll({ habits = [], schedule: sch, activities = [
 
   if (!sch) { await saveScheduledIds([]); return; }
 
-  // Actividades: recorre los próximos N días como fechas concretas
   const newIds = [];
   const now = Date.now();
   const base = new Date(); base.setHours(0, 0, 0, 0);
@@ -269,12 +256,12 @@ export async function rescheduleAll({ habits = [], schedule: sch, activities = [
 
     placements.forEach((p, i) => {
       if (!Number.isFinite(p.start)) return;
-      const dayOffset = Math.floor(p.start / 1440);   // actividades pasada la medianoche
+      const dayOffset = Math.floor(p.start / 1440);
       const mins = ((p.start % 1440) + 1440) % 1440;
       const hour = Math.floor(mins / 60);
       const minute = mins % 60;
       const when = new Date(date.getFullYear(), date.getMonth(), date.getDate() + dayOffset, hour, minute, 0, 0);
-      if (when.getTime() <= now + 5000) return;       // no programar el pasado
+      if (when.getTime() <= now + 5000) return;
 
       const id = `act_${dateStr}_${p.activityId}_${i}`;
       scheduleActivityAt(
@@ -291,8 +278,6 @@ export async function rescheduleAll({ habits = [], schedule: sch, activities = [
   await saveScheduledIds(newIds);
 }
 
-// ─── Conveniencia: reprograma desde el estado del plan ───────
-// Fusiona plantilla + cambios manuales (dayPlans) automáticamente.
 export async function reschedulePlan(planning, habits = []) {
   if (isWeb || !planning?.schedule) return;
   await rescheduleAll({
@@ -301,4 +286,11 @@ export async function reschedulePlan(planning, habits = []) {
     activities: planning.activities || [],
     dayPlans: planning.dayPlans || {},
   });
+}
+
+export function startKeepAliveService() {
+  if (Platform.OS !== 'android' || !FSN || !FSN.startKeepAlive) return;
+  try {
+    if (FSN.startKeepAlive) FSN.startKeepAlive();
+  } catch (e) {}
 }

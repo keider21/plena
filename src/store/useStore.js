@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { format, subDays } from 'date-fns';
 import { formatMoney } from '../utils/currency';
-import { loanPending, OCCUPATIONS, CATEGORIES } from '../utils/finance';
+import { loanPending, OCCUPATIONS, CATEGORIES, findRootAccId } from '../utils/finance';
 import { syncToFirebase, syncFromFirebase, auth } from '../utils/firebase';
 import { supabase } from '../utils/supabase';
 import { cloudSyncUp, cloudSyncDownAll, cloudCurrentUserId } from '../utils/cloud';
@@ -39,6 +39,7 @@ const DEFAULT_SETTINGS = {
   currency: 'PEN',
   secondaryCurrency: 'USD',
   themeMode: 'dark',
+  aiName: null,
   customHabitCategories: [],
   customGastoCategories: [],    // categorías de gasto extra ['Streaming', ...]
   customIngresoCategories: [],  // categorías de ingreso extra ['Taxi', 'Arriendo', ...]
@@ -57,6 +58,10 @@ export const SUGGESTED_ACTIVITIES = [
   { id: 'finanzas', name: 'Finanzas', icon: 'wallet-outline', color: '#14B8A6', minutesPerDay: 20, preferred: 'noche', enabled: false },
   { id: 'lectura', name: 'Lectura', icon: 'book-outline', color: '#6366F1', minutesPerDay: 30, preferred: 'noche', enabled: false },
   { id: 'meditacion', name: 'Meditación', icon: 'moon-outline', color: '#A78BFA', minutesPerDay: 15, preferred: 'manana', enabled: false },
+  { id: 'reunion', name: 'Reunión', icon: 'people-outline', color: '#F97316', minutesPerDay: 30, preferred: 'tarde', enabled: false },
+  { id: 'estudio', name: 'Estudio', icon: 'book-outline', color: '#8B5CF6', minutesPerDay: 45, preferred: 'tarde', enabled: false },
+  { id: 'deporte', name: 'Deporte', icon: 'football-outline', color: '#10B981', minutesPerDay: 60, preferred: 'manana', enabled: false },
+  { id: 'ocio', name: 'Ocio / Relax', icon: 'tv-outline', color: '#EC4899', minutesPerDay: 45, preferred: 'noche', enabled: false },
 ];
 
 const DEFAULT_PLANNING = {
@@ -83,7 +88,7 @@ export const useStore = create((set, get) => ({
   settings: DEFAULT_SETTINGS,
   planning: DEFAULT_PLANNING,
   calendar: { events: [], objectives: [] },
-  finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [] },
+  finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], pendingFromNotifs: [] },
   areas: [], // árbol: [{ id, name, parentId, color, icon, linkedGoalId, linkedHabitId }]
   aiConversations: [],
 
@@ -113,7 +118,7 @@ export const useStore = create((set, get) => ({
       if (!error && data?.session && data?.user) {
         await get()._persistUser({ id: data.user.id, name, email, createdAt: today() });
         await get()._postAuthSync();
-        return { success: true };
+        return { success: true, count: txs.length, accounts: accounts.length };
       }
       if (!error && data?.user && !data?.session) {
         return { error: 'Revisa tu correo para confirmar la cuenta y luego inicia sesión.' };
@@ -213,7 +218,7 @@ export const useStore = create((set, get) => ({
       habitLogs: {},
       goals: [],
       planning: { schedule: null, activities: [], log: {}, dayPlans: {} },
-      finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], payments: [] },
+      finance: { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], payments: [], pendingFromNotifs: [] },
       calendar: [],
       areas: [],
       settings: { currency: 'PEN', themeMode: 'dark', hiddenModules: [] },
@@ -246,8 +251,41 @@ export const useStore = create((set, get) => ({
         AsyncStorage.getItem('areas'),
         AsyncStorage.getItem('aiConversations'),
       ]);
-      const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [] };
+      const emptyFinance = { accounts: [], cards: [], loans: [], debts: [], transactions: [], gastosFijos: [], receivables: [], pendingFromNotifs: [] };
       const savedPlanning = planningRaw ? JSON.parse(planningRaw) : null;
+
+      let parsedFinance = financeRaw ? { ...emptyFinance, ...JSON.parse(financeRaw) } : emptyFinance;
+
+      // Migración y auto-reparación de saldos al cargar
+      if (parsedFinance.accounts.length > 0) {
+        const accounts = [...parsedFinance.accounts];
+
+        // 1. Asegurar que todas las cuentas tengan un initialBalance (migración de datos viejos)
+        accounts.forEach(a => {
+          if (a.initialBalance === undefined) a.initialBalance = a.balance || 0;
+        });
+
+    // 2. Sincronizar hijos con padres recursivos
+        accounts.forEach(a => {
+      const rootId = findRootAccId(accounts, a.id);
+      if (rootId !== a.id) {
+        const root = accounts.find(r => r.id === rootId);
+        if (root) a.balance = root.balance;
+          }
+        });
+        parsedFinance.accounts = accounts;
+
+        // 3. También tarjetas de débito
+        parsedFinance.cards = (parsedFinance.cards || []).map(c => {
+          if (c.initialBalance === undefined) c.initialBalance = c.balance || 0;
+          if (c.kind === 'debito' && c.linkedTo) {
+            const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
+            if (parent) return { ...c, balance: parent.balance };
+          }
+          return c;
+        });
+      }
+
       set({
         users: usersRaw ? JSON.parse(usersRaw) : [],
         currentUser: userRaw ? JSON.parse(userRaw) : null,
@@ -258,13 +296,18 @@ export const useStore = create((set, get) => ({
         userProfile: profileRaw ? JSON.parse(profileRaw) : {},
         onboardingDone: onbRaw === 'true',
         settings: settingsRaw ? { ...DEFAULT_SETTINGS, ...JSON.parse(settingsRaw) } : DEFAULT_SETTINGS,
-        planning: savedPlanning
-          ? { schedule: savedPlanning.schedule || null, activities: savedPlanning.activities || SUGGESTED_ACTIVITIES, log: savedPlanning.log || {}, dayPlans: savedPlanning.dayPlans || {} }
+                planning: savedPlanning
+          ? {
+              schedule: savedPlanning.schedule || null,
+              activities: (savedPlanning.activities && savedPlanning.activities.length >= 8) ? savedPlanning.activities : SUGGESTED_ACTIVITIES,
+              log: savedPlanning.log || {},
+              dayPlans: savedPlanning.dayPlans || {}
+            }
           : DEFAULT_PLANNING,
         calendar: calendarRaw
           ? { events: JSON.parse(calendarRaw).events || [], objectives: JSON.parse(calendarRaw).objectives || [] }
           : { events: [], objectives: [] },
-        finance: financeRaw ? { ...emptyFinance, ...JSON.parse(financeRaw) } : emptyFinance,
+        finance: parsedFinance,
         areas: areasRaw ? JSON.parse(areasRaw) : [],
         aiConversations: aiConvRaw ? JSON.parse(aiConvRaw) : [],
       });
@@ -277,6 +320,115 @@ export const useStore = create((set, get) => ({
     const settings = { ...get().settings, currency: code };
     set({ settings });
     await AsyncStorage.setItem('settings', JSON.stringify(settings));
+  },
+
+  // ─── PENDING NOTIFS ──────────────────────────────────
+  addPendingNotif: async (notif) => {
+    const f = get().finance;
+    const pending = [...(f.pendingFromNotifs || []), { id: Date.now().toString(), ...notif }];
+    await get()._saveFinance({ ...f, pendingFromNotifs: pending });
+  },
+  dismissPendingNotif: async (id) => {
+    const f = get().finance;
+    const pending = (f.pendingFromNotifs || []).filter(n => n.id !== id);
+    await get()._saveFinance({ ...f, pendingFromNotifs: pending });
+  },
+
+  // Reconciliación: reconstruye saldos desde cero basándose en transacciones
+    hardResetFinance: async () => {
+    const f = get().finance;
+    // Poner a cero ABSOLUTO todo lo que puede generar saldos fantasma
+    const accounts = (f.accounts || []).map(a => ({ ...a, initialBalance: 0, balance: 0 }));
+    const cards = (f.cards || []).map(c => ({ ...c, initialBalance: 0, balance: 0, used: 0 }));
+    const debts = (f.debts || []).map(d => ({ ...d, amount: 0, paid: 0 }));
+    const loans = (f.loans || []).map(l => ({ ...l, amount: 0, installmentsPaid: 0, pending: 0 }));
+    const receivables = (f.receivables || []).map(r => ({ ...r, amount: 0, paid: 0 }));
+
+    await get()._saveFinance({
+      ...f,
+      accounts, cards, debts, loans, receivables,
+      transactions: [], // Opcional: borrar historial si el usuario quiere empezar de 0 total
+      payments: []
+    });
+    return await get().reconcileAccounts();
+  },
+
+  reconcileAccounts: async () => {
+    const f = get().finance;
+    // Ordenar cronológicamente para reconstruir la historia
+    const txs = [...(f.transactions || [])].sort((a, b) => {
+      const da = (a.date || '0000-00-00') + (a.time || '00:00');
+      const db = (b.date || '0000-00-00') + (b.time || '00:00');
+      return da.localeCompare(db);
+    });
+
+    // Resetear saldos al valor inicial.
+    // IMPORTANTE: Si el usuario puso un Saldo Inicial pero tiene transacciones ANTERIORES
+    // a la fecha en que puso ese saldo, se van a duplicar los valores.
+    // Por ahora reseteamos a initialBalance.
+    let accounts = f.accounts.map(a => ({ ...a, balance: a.initialBalance ?? 0 }));
+    let cards = f.cards.map(c => ({ ...c, used: 0, balance: (c.kind === 'debito' ? (c.initialBalance ?? 0) : 0) }));
+
+    const getRootId = (accId, cardId) => {
+      let finalAccId = accId;
+      if (!finalAccId && cardId) {
+        const card = f.cards.find(x => x.id === cardId);
+        if (card?.kind === 'debito' && card?.linkedTo) finalAccId = card.linkedTo;
+      }
+      return findRootAccId(f.accounts, finalAccId);
+    };
+
+    for (const t of txs) {
+      const amt = t.amount || 0;
+      const rootId = getRootId(t.accountId, t.cardId);
+      const toRootId = getRootId(t.toAccountId);
+
+      // Aplicar a cuentas
+      accounts = accounts.map(a => {
+        let newBal = a.balance;
+        if (rootId && a.id === rootId) {
+          if (t.type === 'ingreso') newBal += amt;
+          else if (t.type === 'gasto' || t.type === 'transferencia' || t.type === 'pago') newBal -= amt;
+        }
+        if (t.type === 'transferencia' && rootId === toRootId) return a; // Ignorar transferencias internas
+        if (t.type === 'transferencia' && toRootId && a.id === toRootId) {
+          newBal += amt;
+        }
+        return { ...a, balance: newBal };
+      });
+
+      // Aplicar a tarjetas
+      if (t.cardId) {
+        const txCard = f.cards.find(c => c.id === t.cardId);
+        cards = cards.map(c => {
+          if (c.id !== t.cardId) return c;
+          if (t.type === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - amt) };
+          if (c.kind === 'debito') {
+            // Si es debito y NO está vinculada, su saldo es independiente
+            if (!c.linkedTo) return { ...c, balance: (c.balance || 0) - amt };
+            return c; // si está vinculada, ya se restó del rootAccount arriba
+          }
+          return { ...c, used: (c.used || 0) + amt };
+        });
+      }
+    }
+
+    // Sincronizar todo el cluster (hijos a padres recursivos)
+    accounts = accounts.map(a => {
+      const rootId = findRootAccId(accounts, a.id);
+      if (rootId === a.id) return a;
+      const root = accounts.find(r => r.id === rootId);
+      return root ? { ...a, balance: root.balance } : a;
+    });
+    cards = cards.map(c => {
+      if (!c.linkedTo || c.kind !== 'debito') return c;
+      const rootId = findRootAccId(accounts, c.linkedTo);
+      const root = accounts.find(r => r.id === rootId);
+      return root ? { ...c, balance: root.balance } : c;
+    });
+
+    await get()._saveFinance({ ...f, accounts, cards });
+    return { success: true };
   },
 
   // ─── PLANNING ────────────────────────────────────────────
@@ -548,39 +700,44 @@ export const useStore = create((set, get) => ({
     set({ finance });
     await AsyncStorage.setItem('finance', JSON.stringify(finance));
     const uid = auth?.currentUser?.uid;
-    if (uid) syncToFirebase(uid, 'finance', finance).catch(() => {});
+    if (uid) cloudSyncUp('finance', finance).catch(() => {});
   },
   _fid: () => Date.now().toString() + Math.random().toString(36).slice(2, 6),
 
   addAccount: async (acc) => {
     const f = get().finance;
-    const a = { id: get()._fid(), balance: 0, currency: get().settings.currency, ...acc };
-    await get()._saveFinance({ ...f, accounts: [...f.accounts, a] });
+    const a = { id: get()._fid(), balance: 0, initialBalance: acc.balance || 0, currency: get().settings.currency, ...acc };
+    let accounts = [...f.accounts, a];
+    // Si se crea vinculada, heredar saldo de la raíz
+    if (a.linkedTo) {
+      const rootId = findRootAccId(accounts, a.linkedTo);
+      const root = accounts.find(r => r.id === rootId);
+      if (root) a.balance = root.balance;
+    }
+    await get()._saveFinance({ ...f, accounts });
   },
   updateAccount: async (id, patch) => {
     const f = get().finance;
     let accounts = f.accounts.map(a => a.id === id ? { ...a, ...patch } : a);
     if (patch.balance != null) {
       const edited = accounts.find(a => a.id === id);
+      const rootId = findRootAccId(accounts, id);
       const newBalance = edited.balance;
-      // Encontrar el root del grupo (padre directo o el mismo si es padre)
-      const rootId = edited.linkedTo || id;
-      // Sincronizar TODOS en el grupo al mismo balance (bidireccional)
-      accounts = accounts.map(a => {
-        if (a.id === rootId || a.linkedTo === rootId) return { ...a, balance: newBalance };
-        return a;
-      });
+      // Sincronizar TODO el cluster recursivo
+      accounts = accounts.map(a => findRootAccId(accounts, a.id) === rootId ? { ...a, balance: newBalance, initialBalance: (a.id === id ? newBalance : a.initialBalance) } : a);
     } else {
       accounts = accounts.map(a => {
-        if (!a.linkedTo) return a;
-        const parent = accounts.find(x => x.id === a.linkedTo);
-        return parent ? { ...a, balance: parent.balance } : a;
+        const rootId = findRootAccId(accounts, a.id);
+        if (rootId === a.id) return a;
+        const root = accounts.find(r => r.id === rootId);
+        return root ? { ...a, balance: root.balance } : a;
       });
     }
     const cards = f.cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(x => x.id === c.linkedTo);
-      return parent ? { ...c, balance: parent.balance } : c;
+      const rootId = findRootAccId(accounts, c.linkedTo);
+      const root = accounts.find(r => r.id === rootId);
+      return root ? { ...c, balance: root.balance } : c;
     });
     await get()._saveFinance({ ...f, accounts, cards });
   },
@@ -595,7 +752,14 @@ export const useStore = create((set, get) => ({
 
   addTransaction: async (tx) => {
     const f = get().finance;
-    const t = { id: get()._fid(), date: today(), ...tx };
+    const acc = tx.accountId ? f.accounts.find(a => a.id === tx.accountId) : null;
+    const card = tx.cardId ? f.cards.find(c => c.id === tx.cardId) : null;
+    const t = {
+      id: get()._fid(),
+      date: today(),
+      currency: acc?.currency || card?.currency || get().settings.currency,
+      ...tx
+    };
     const amt = t.amount || 0;
 
     // ── Transferencia: resolver la raíz de cada grupo vinculado y validar ──
@@ -603,11 +767,9 @@ export const useStore = create((set, get) => ({
     // sobre la raíz evita que el espejo de vinculadas borre el movimiento.
     let transferOriginRoot = null, transferDestRoot = null;
     if (t.type === 'transferencia') {
-      const origin = f.accounts.find((a) => a.id === t.accountId);
-      const dest = f.accounts.find((a) => a.id === t.toAccountId);
-      if (!origin || !dest) return { error: 'Cuenta de transferencia no encontrada.' };
-      transferOriginRoot = origin.linkedTo || origin.id;
-      transferDestRoot = dest.linkedTo || dest.id;
+      transferOriginRoot = findRootAccId(f.accounts, t.accountId);
+      transferDestRoot = findRootAccId(f.accounts, t.toAccountId);
+      if (!transferOriginRoot || !transferDestRoot) return { error: 'Cuenta de transferencia no encontrada.' };
       if (transferOriginRoot === transferDestRoot) {
         return { error: 'Esas cuentas comparten el mismo saldo (están vinculadas). Transferir entre ellas no movería dinero.' };
       }
@@ -636,25 +798,34 @@ export const useStore = create((set, get) => ({
     const txCard = t.cardId ? f.cards.find(c => c.id === t.cardId) : null;
     const debitLinkedAccId = (txCard?.kind === 'debito' && txCard?.linkedTo) ? txCard.linkedTo : null;
 
+    // Identificar cuenta(s) a afectar y sus raíces para mantener sincronía
+    const targetAccId = t.accountId || debitLinkedAccId;
+    const targetRootId = findRootAccId(f.accounts, targetAccId);
+
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
         if (a.id === transferOriginRoot) return { ...a, balance: (a.balance || 0) - amt };
         if (a.id === transferDestRoot) return { ...a, balance: (a.balance || 0) + amt };
         return a;
       }
-      if (a.id === t.accountId) {
-        return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? amt : -amt) };
+      // Si el movimiento es un pago de tarjeta, también se resta de la cuenta de origen
+      if (t.type === 'pago') {
+        if (a.id === targetRootId) return { ...a, balance: (a.balance || 0) - amt };
+        return a;
       }
-      if (debitLinkedAccId && a.id === debitLinkedAccId) {
-        return { ...a, balance: (a.balance || 0) - amt };
+      // Actualizamos siempre la RAÍZ del grupo vinculado
+      if (targetRootId && a.id === targetRootId) {
+        return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? amt : -amt) };
       }
       return a;
     });
-    // Cuentas vinculadas (hijas) espejo la cuenta padre
+
+    // Sincronizar todas las hijas con su padre recursivo
     accounts = accounts.map(a => {
-      if (!a.linkedTo) return a;
-      const parent = accounts.find(x => x.id === a.linkedTo);
-      return parent ? { ...a, balance: parent.balance } : a;
+      const rootId = findRootAccId(accounts, a.id);
+      if (rootId === a.id) return a;
+      const root = accounts.find(r => r.id === rootId);
+      return root ? { ...a, balance: root.balance } : a;
     });
 
     let cards = t.cardId
@@ -671,7 +842,7 @@ export const useStore = create((set, get) => ({
     // Tarjetas débito vinculadas espejo la cuenta
     cards = cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(x => x.id === c.linkedTo);
+      const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
       return parent ? { ...c, balance: parent.balance } : c;
     });
     // Historial de pagos a tarjeta
@@ -691,26 +862,29 @@ export const useStore = create((set, get) => ({
     const amt = t.amount || 0;
     const txCard = t.cardId ? f.cards.find(c => c.id === t.cardId) : null;
     const debitLinkedAccId = (txCard?.kind === 'debito' && txCard?.linkedTo) ? txCard.linkedTo : null;
-    const delOriginRoot = t.type === 'transferencia' ? ((f.accounts.find(a => a.id === t.accountId) || {}).linkedTo || t.accountId) : null;
-    const delDestRoot = t.type === 'transferencia' ? ((f.accounts.find(a => a.id === t.toAccountId) || {}).linkedTo || t.toAccountId) : null;
+    const delOriginRoot = t.type === 'transferencia' ? findRootAccId(f.accounts, t.accountId) : null;
+    const delDestRoot = t.type === 'transferencia' ? findRootAccId(f.accounts, t.toAccountId) : null;
+
+    const targetAccId = t.accountId || debitLinkedAccId;
+    const targetRootId = findRootAccId(f.accounts, targetAccId);
+
     let accounts = f.accounts.map(a => {
       if (t.type === 'transferencia') {
+        if (delOriginRoot === delDestRoot) return a;
         if (a.id === delOriginRoot) return { ...a, balance: (a.balance || 0) + amt };
         if (a.id === delDestRoot) return { ...a, balance: (a.balance || 0) - amt };
         return a;
       }
-      if (a.id === t.accountId) {
+      if (targetRootId && a.id === targetRootId) {
         return { ...a, balance: (a.balance || 0) + (t.type === 'ingreso' ? -amt : amt) };
-      }
-      if (debitLinkedAccId && a.id === debitLinkedAccId) {
-        return { ...a, balance: (a.balance || 0) + amt };
       }
       return a;
     });
     accounts = accounts.map(a => {
-      if (!a.linkedTo) return a;
-      const parent = accounts.find(x => x.id === a.linkedTo);
-      return parent ? { ...a, balance: parent.balance } : a;
+      const rootId = findRootAccId(accounts, a.id);
+      if (rootId === a.id) return a;
+      const root = accounts.find(r => r.id === rootId);
+      return root ? { ...a, balance: root.balance } : a;
     });
     let cards = t.cardId
       ? f.cards.map(c => {
@@ -725,7 +899,7 @@ export const useStore = create((set, get) => ({
       : f.cards;
     cards = cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(x => x.id === c.linkedTo);
+      const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
       return parent ? { ...c, balance: parent.balance } : c;
     });
     await get()._saveFinance({ ...f, accounts, cards, transactions: f.transactions.filter(x => x.id !== id) });
@@ -741,10 +915,25 @@ export const useStore = create((set, get) => ({
     const newAccountId = patch.accountId !== undefined ? patch.accountId : old.accountId;
     const newToAccountId = patch.toAccountId !== undefined ? patch.toAccountId : old.toAccountId;
     const newCardId = patch.cardId !== undefined ? patch.cardId : old.cardId;
-    // Revert old effects on accounts
+
+    const getAccountRoot = (accId, cardId) => {
+      let finalAccId = accId;
+      if (!finalAccId && cardId) {
+        const card = f.cards.find(c => c.id === cardId);
+        if (card?.kind === 'debito' && card?.linkedTo) finalAccId = card.linkedTo;
+      }
+      return findRootAccId(f.accounts, finalAccId);
+    };
+
+    const oldRootId = getAccountRoot(old.accountId, old.cardId);
+    const oldToRootId = getAccountRoot(old.toAccountId);
+    const newRootId = getAccountRoot(newAccountId, newCardId);
+    const newToRootId = getAccountRoot(newToAccountId);
+
+    // Revert old effects on accounts (always using roots)
     let accounts = f.accounts.map(a => {
-      if (a.id === old.accountId) return { ...a, balance: (a.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
-      if (old.type === 'transferencia' && a.id === old.toAccountId) return { ...a, balance: (a.balance || 0) - oldAmt };
+      if (oldRootId && a.id === oldRootId) return { ...a, balance: (a.balance || 0) + (old.type === 'ingreso' ? -oldAmt : oldAmt) };
+      if (old.type === 'transferencia' && oldRootId !== oldToRootId && oldToRootId && a.id === oldToRootId) return { ...a, balance: (a.balance || 0) - oldAmt };
       return a;
     });
     // Revert old effects on cards
@@ -752,14 +941,17 @@ export const useStore = create((set, get) => ({
       ? f.cards.map(c => {
           if (c.id !== old.cardId) return c;
           if (old.type === 'pago') return { ...c, used: (c.used || 0) + oldAmt };
-          if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) + oldAmt };
+          if (c.kind === 'debito') {
+            if (c.linkedTo) return c;
+            return { ...c, balance: (c.balance || 0) + oldAmt };
+          }
           return { ...c, used: Math.max(0, (c.used || 0) - oldAmt) };
         })
       : f.cards;
-    // Apply new effects on accounts
+    // Apply new effects on accounts (always using roots)
     accounts = accounts.map(a => {
-      if (a.id === newAccountId) return { ...a, balance: (a.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
-      if (newType === 'transferencia' && a.id === newToAccountId) return { ...a, balance: (a.balance || 0) + newAmt };
+      if (newRootId && a.id === newRootId) return { ...a, balance: (a.balance || 0) + (newType === 'ingreso' ? newAmt : -newAmt) };
+      if (newType === 'transferencia' && newRootId !== newToRootId && newToRootId && a.id === newToRootId) return { ...a, balance: (a.balance || 0) + newAmt };
       return a;
     });
     // Apply new effects on cards
@@ -767,19 +959,23 @@ export const useStore = create((set, get) => ({
       cards = cards.map(c => {
         if (c.id !== newCardId) return c;
         if (newType === 'pago') return { ...c, used: Math.max(0, (c.used || 0) - newAmt) };
-        if (c.kind === 'debito') return { ...c, balance: (c.balance || 0) - newAmt };
+        if (c.kind === 'debito') {
+          if (c.linkedTo) return c;
+          return { ...c, balance: (c.balance || 0) - newAmt };
+        }
         return { ...c, used: (c.used || 0) + newAmt };
       });
     }
     // Sync linked accounts and cards
     accounts = accounts.map(a => {
-      if (!a.linkedTo) return a;
-      const parent = accounts.find(x => x.id === a.linkedTo);
-      return parent ? { ...a, balance: parent.balance } : a;
+      const rootId = findRootAccId(accounts, a.id);
+      if (rootId === a.id) return a;
+      const root = accounts.find(r => r.id === rootId);
+      return root ? { ...a, balance: root.balance } : a;
     });
     cards = cards.map(c => {
       if (!c.linkedTo || c.kind !== 'debito') return c;
-      const parent = accounts.find(x => x.id === c.linkedTo);
+      const rootId = findRootAccId(accounts, c.linkedTo); const parent = accounts.find(p => p.id === rootId);
       return parent ? { ...c, balance: parent.balance } : c;
     });
     const transactions = f.transactions.map(t => t.id === id ? { ...old, ...patch, id, amount: newAmt } : t);
@@ -789,7 +985,7 @@ export const useStore = create((set, get) => ({
 
   addCard: async (card) => {
     const f = get().finance;
-    await get()._saveFinance({ ...f, cards: [...f.cards, { id: get()._fid(), currency: get().settings.currency, ...card }] });
+    await get()._saveFinance({ ...f, cards: [...f.cards, { id: get()._fid(), initialBalance: card.balance || 0, currency: get().settings.currency, ...card }] });
   },
   updateCard: async (id, patch) => {
     const f = get().finance;

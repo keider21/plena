@@ -59,9 +59,15 @@ export default function PlanningWizard({ navigation }) {
 
   const upd = (patch) => setSchedule((s) => ({ ...s, ...patch }));
   const updWork = (patch) => setSchedule((s) => ({ ...s, work: { ...s.work, ...patch } }));
+  const updWork2 = (patch) => setSchedule((s) => ({ ...s, work2: { ...s.work2 || { enabled: false, start: '19:00', end: '22:00', days: [1, 2, 3, 4, 5], label: 'Trabajo (Turno 2)' }, ...patch } }));
   const toggleWorkDay = (n) => {
     const days = schedule.work.days.includes(n) ? schedule.work.days.filter((x) => x !== n) : [...schedule.work.days, n];
     updWork({ days });
+  };
+  const toggleWorkDay2 = (n) => {
+    const currentDays = schedule.work2?.days || [];
+    const days = currentDays.includes(n) ? currentDays.filter((x) => x !== n) : [...currentDays, n];
+    updWork2({ days });
   };
   const updMeal = (id, patch) =>
     setSchedule((s) => ({ ...s, meals: s.meals.map((m) => (m.id === id ? { ...m, ...patch } : m)) }));
@@ -141,6 +147,24 @@ export default function PlanningWizard({ navigation }) {
               </View>
               <Text style={[styles.miniLabel, { marginTop: 12 }]}>Días que trabajas</Text>
               <DayChips days={schedule.work.days} onToggle={toggleWorkDay} />
+            </>
+          )}
+        </View>
+
+        {/* Trabajo 2 */}
+        <View style={styles.card}>
+          <View style={styles.cardHead}>
+            <Text style={styles.cardTitle}>💼 Trabajo (Turno 2)</Text>
+            <Toggle value={schedule.work2?.enabled} onChange={(v) => updWork2({ enabled: v })} />
+          </View>
+          {schedule.work2?.enabled && (
+            <>
+              <View style={styles.twoCol}>
+                <View style={{ flex: 1 }}><Text style={styles.miniLabel}>Entrada</Text><TimePickerField value={schedule.work2?.start} onChange={(v) => updWork2({ start: v })} compact /></View>
+                <View style={{ flex: 1 }}><Text style={styles.miniLabel}>Salida</Text><TimePickerField value={schedule.work2?.end} onChange={(v) => updWork2({ end: v })} compact /></View>
+              </View>
+              <Text style={[styles.miniLabel, { marginTop: 12 }]}>Días que trabajas</Text>
+              <DayChips days={schedule.work2?.days || []} onToggle={toggleWorkDay2} />
             </>
           )}
         </View>

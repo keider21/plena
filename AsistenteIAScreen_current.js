@@ -510,29 +510,17 @@ export default function AsistenteIAScreen() {
   };
 
     const voice = async () => {
-    const fsn = NativeModules.FullScreenNotif;
-    if (!fsn || !fsn.startSpeechRecognition) {
-      setIsRecording(true);
-      setTimeout(() => {
-        setIsRecording(false);
-        setText("Registrar un gasto de 20 soles en taxi");
-      }, 3000);
+    if (isRecording) {
+      setIsRecording(false);
+      // Aquí se detendría la grabación y se enviaría al API
+      Alert.alert('Procesando voz', 'En una versión real, aquí enviaríamos el audio a Whisper/OpenAI para transcribirlo.');
       return;
     }
 
-    try {
-      setIsRecording(true);
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      const result = await fsn.startSpeechRecognition();
-      setIsRecording(false);
-      if (result) {
-        setText(result);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      }
-    } catch (e) {
-      setIsRecording(false);
-      Alert.alert('Error de voz', 'No se pudo activar el reconocimiento de voz.');
-    }
+    setIsRecording(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Simular que detectó silencio después de 4 segundos
+    setTimeout(() => setIsRecording(false), 4000);
   };
 
   const renderText = (txt) => {
@@ -717,7 +705,4 @@ const styles = StyleSheet.create({
   modalInput: { backgroundColor: COLORS.card, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12, color: COLORS.text, fontSize: 16, borderWidth: 0.5, borderColor: COLORS.cardBorder },
   modalBtn: { backgroundColor: COLORS.purple, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   modalBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
-  recordingOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: COLORS.bg + 'EE', zIndex: 100, alignItems: 'center', justifyContent: 'center', gap: 20 },
-  recordingPulse: { width: 80, height: 80, borderRadius: 40, backgroundColor: COLORS.red + '22', alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: COLORS.red },
-  recordingText: { color: COLORS.text, fontSize: 18, fontWeight: '700' },
 });

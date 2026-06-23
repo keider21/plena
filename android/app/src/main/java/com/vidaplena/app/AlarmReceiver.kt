@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.PowerManager
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 
@@ -20,6 +21,7 @@ class AlarmReceiver : BroadcastReceiver() {
         const val EXTRA_DATA = "fsn_data"
         const val EXTRA_NOTIF_INT_ID = "fsn_notif_int_id"
         private const val CHANNEL_ID = "fsn_alarmas"
+        private const val TAG = "VPAlarm"
 
         fun ensureChannel(context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -37,65 +39,75 @@ class AlarmReceiver : BroadcastReceiver() {
     }
 
     override fun onReceive(context: Context, intent: Intent) {
+        Log.d(TAG, "Alarm received! Action: ${intent.action}")
+
         // Wake lock: mantiene el CPU activo el tiempo suficiente para lanzar el popup
         val pm = context.getSystemService(PowerManager::class.java)
         val wl = pm?.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "VidaPlena:AlarmWL")
         wl?.acquire(15_000L)
 
         try {
-        val id = intent.getStringExtra(EXTRA_ID) ?: return
-        val title = intent.getStringExtra(EXTRA_TITLE) ?: "Actividad"
-        val body = intent.getStringExtra(EXTRA_BODY) ?: ""
-        val data = intent.getStringExtra(EXTRA_DATA) ?: "{}"
-        val notifIntId = id.hashCode()
+            val id = intent.getStringExtra(EXTRA_ID) ?: return
+            val title = intent.getStringExtra(EXTRA_TITLE) ?: "Actividad"
+            val body = intent.getStringExtra(EXTRA_BODY) ?: ""
+            val data = intent.getStringExtra(EXTRA_DATA) ?: "{}"
+            val notifIntId = id.hashCode()
 
-        // Emit to React Native if app is in foreground
-        FullScreenNotifModule.emitShow(id, title, body, data)
+            Log.d(TAG, "Processing alarm id: $id, title: $title")
 
-        ensureChannel(context)
+            // Emit to React Native if app is in foreground
+            FullScreenNotifModule.emitShow(id, title, body, data)
 
-        // fullScreenIntent → PopupActivity (fires when screen is OFF / phone idle)
-        val popupIntent = Intent(context, PopupActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-            putExtra(EXTRA_ID, id)
-            putExtra(EXTRA_TITLE, title)
-            putExtra(EXTRA_BODY, body)
-            putExtra(EXTRA_DATA, data)
-            putExtra(EXTRA_NOTIF_INT_ID, notifIntId)
-        }
-        val fullScreenPi = PendingIntent.getActivity(
-            context, notifIntId, popupIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+            ensureChannel(context)
 
-        // Content tap → open app
-        val openPi = PendingIntent.getActivity(
-            context, notifIntId + 100,
-            Intent(context, MainActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-            },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+            // fullScreenIntent → PopupActivity (fires when screen is OFF / phone idle)
+            val popupIntent = Intent(context, PopupActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(EXTRA_ID, id)
+                putExtra(EXTRA_TITLE, title)
+                putExtra(EXTRA_BODY, body)
+                putExtra(EXTRA_DATA, data)
+                putExtra(EXTRA_NOTIF_INT_ID, notifIntId)
+            }
+            val fullScreenPi = PendingIntent.getActivity(
+                context, notifIntId, popupIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
-        val iconRes = context.resources.getIdentifier("notification_icon", "drawable", context.packageName)
-            .takeIf { it != 0 } ?: android.R.drawable.ic_dialog_info
+            // Content tap → open app
+            val openPi = PendingIntent.getActivity(
+                context, notifIntId + 100,
+                Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
 
-        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(iconRes)
-            .setContentTitle(title)
-            .setContentText(body)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
-            .setCategory(NotificationCompat.CATEGORY_ALARM)
-            .setFullScreenIntent(fullScreenPi, true)
-            .setContentIntent(openPi)
-            .setAutoCancel(true)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
+            val iconRes = context.resources.getIdentifier("notification_icon", "drawable", context.packageName)
+                .takeIf { it != 0 } ?: android.R.drawable.ic_dialog_info
 
-        try {
-            NotificationManagerCompat.from(context).notify(notifIntId, notification)
-        } catch (_: SecurityException) {}
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                .setSmallIcon(iconRes)
+                .setContentTitle(title)
+                .setContentText(body)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
+                .setFullScreenIntent(fullScreenPi, true)
+                .setContentIntent(openPi)
+                .setAutoCancel(true)
+                .setOngoing(true) // Hace que la notif sea más difícil de ignorar
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
 
+            try {
+                Log.d(TAG, "Displaying notification $notifIntId")
+                NotificationManagerCompat.from(context).notify(notifIntId, notification)
+            } catch (e: SecurityException) {
+                Log.e(TAG, "SecurityException displaying notif: ${e.message}")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in onReceive: ${e.message}")
         } finally {
             wl?.release()
         }
