@@ -41,8 +41,8 @@ class FullScreenNotifModule(private val reactContext: ReactApplicationContext)
                 }
 
                 try {
-                    reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                        .emit("onPaymentNotification", params)
+                    val emitter = reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    emitter.emit("onPaymentNotification", params)
                 } catch (e: Exception) {
                     Log.w(TAG, "Bridge no listo")
                 }
@@ -101,7 +101,7 @@ class FullScreenNotifModule(private val reactContext: ReactApplicationContext)
 
     @ReactMethod
     fun startSpeechRecognition(promise: Promise) {
-        val act = currentActivity
+        val act = getCurrentActivity()
         if (act == null) {
             promise.reject("ERR_NO_ACTIVITY", "No hay una ventana activa")
             return
