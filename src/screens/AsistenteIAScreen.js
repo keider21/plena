@@ -509,35 +509,30 @@ export default function AsistenteIAScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
   };
 
-      const voice = async () => {
-    if (isRecording) {
-      setIsRecording(false);
-      // Simulate processing
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      const possibleTranscriptions = [
-        "¿Cuánto gasté en comida este mes?",
-        "Registrar un gasto de 20 soles en taxi",
-        "¿Cómo va mi racha de ejercicios?",
-        "Crear una nueva meta: Ahorrar para mi viaje"
-      ];
-      const randomText = possibleTranscriptions[Math.floor(Math.random() * possibleTranscriptions.length)];
-      setText(randomText);
+    const voice = async () => {
+    const fsn = NativeModules.FullScreenNotif;
+    if (!fsn || !fsn.startSpeechRecognition) {
+      setIsRecording(true);
+      setTimeout(() => {
+        setIsRecording(false);
+        setText("Registrar un gasto de 20 soles en taxi");
+      }, 3000);
       return;
     }
 
-    setIsRecording(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    // Simular que detectó silencio después de 3 segundos
-    setTimeout(() => {
-      // Check if still recording to avoid double triggers
-      setIsRecording(prev => {
-        if (prev) {
-           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-           setText("Registrar gasto de 15 soles en cena");
-        }
-        return false;
-      });
-    }, 3500);
+    try {
+      setIsRecording(true);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      const result = await fsn.startSpeechRecognition();
+      setIsRecording(false);
+      if (result) {
+        setText(result);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
+    } catch (e) {
+      setIsRecording(false);
+      Alert.alert('Error de voz', 'No se pudo activar el reconocimiento de voz.');
+    }
   };
 
   const renderText = (txt) => {

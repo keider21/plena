@@ -1,5 +1,6 @@
 package com.vidaplena.app
 
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -10,13 +11,19 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.speech.RecognizerIntent
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.util.*
 
 class FullScreenNotifModule(private val rc: ReactApplicationContext)
-    : ReactContextBaseJavaModule(rc) {
+    : ReactContextBaseJavaModule(rc), ActivityEventListener {
+
+    private var speechPromise: Promise? = null
+    private val TAG = "VPModule"
 
     private val receiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -33,8 +40,13 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
                     putString("text", text)
                 }
 
-                rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                    .emit("onPaymentNotification", params)
+                // Solo emitimos a JS si el bridge está activo
+                try {
+                    rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                        .emit("onPaymentNotification", params)
+                } catch (e: Exception) {
+                    Log.w(TAG, "Bridge no listo para notificar pago")
+                }
             }
         }
     }
@@ -70,6 +82,7 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
 
     override fun initialize() {
         super.initialize()
+        rc.addActivityEventListener(this)
         emitter = rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
 
         val filter = IntentFilter("com.vidaplena.app.PAYMENT_NOTIFICATION")
@@ -82,9 +95,50 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
 
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
+        rc.removeActivityEventListener(this)
         emitter = null
         try { rc.unregisterReceiver(receiver) } catch (e: Exception) {}
     }
+
+    @ReactMethod
+    fun startSpeechRecognition(promise: Promise) {
+        val activity = currentActivity
+        if (activity == null) {
+            promise.reject("ERR_NO_ACTIVITY", "No hay una ventana activa")
+            return
+        }
+
+        speechPromise = promise
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Te escucho...")
+        }
+
+        try {
+            activity.startActivityForResult(intent, 7777)
+        } catch (e: Exception) {
+            promise.reject("ERR_SPEECH", e.message)
+        }
+    }
+
+    override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == 7777) {
+            if (resultCode == Activity.RESULT_OK && data != null) {
+                val result = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                if (result != null && result.size > 0) {
+                    speechPromise?.resolve(result[0])
+                } else {
+                    speechPromise?.resolve("")
+                }
+            } else {
+                speechPromise?.resolve("")
+            }
+            speechPromise = null
+        }
+    }
+
+    override fun onNewIntent(intent: Intent?) {}
 
     @ReactMethod
     fun getPendingEvent(promise: Promise) {
