@@ -49,12 +49,21 @@
         android:launchMode="singleTask"
         android:screenOrientation="portrait" />
 
-    <service android:name=".NotificationListener"
+    <!-- Lector de Yape/Plin (Nuestro servicio personalizado con nombre único) -->
+    <service android:name=".PaymentNotificationReceiver"
              android:label="Vida Plena Notif Reader"
              android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
              android:exported="true">
         <intent-filter>
             <action android:name="android.service.notification.NotificationListenerService" />
+        </intent-filter>
+    </service>
+
+    <!-- Puente para Expo Notifications (Evita el ClassNotFoundException) -->
+    <service android:name=".NotificationListener"
+             android:exported="true">
+        <intent-filter>
+            <action android:name="expo.modules.notifications.service.NotificationsService" />
         </intent-filter>
     </service>
 
