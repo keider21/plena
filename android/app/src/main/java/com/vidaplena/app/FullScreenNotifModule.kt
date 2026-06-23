@@ -19,15 +19,15 @@ import com.facebook.react.bridge.*
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.*
 
-class FullScreenNotifModule(private val rc: ReactApplicationContext)
-    : ReactContextBaseJavaModule(rc), ActivityEventListener {
+class FullScreenNotifModule(private val reactContext: ReactApplicationContext)
+    : ReactContextBaseJavaModule(reactContext), ActivityEventListener {
 
     private var speechPromise: Promise? = null
     private val TAG = "VPModule"
 
     private val receiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "com.vidaplena.app.PAYMENT_NOTIFICATION") {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action == "com.vidaplena.app.PAYMENT_NOTIFICATION") {
                 val amount = intent.getDoubleExtra("amount", 0.0)
                 val sender = intent.getStringExtra("sender") ?: ""
                 val packageName = intent.getStringExtra("packageName") ?: ""
@@ -41,7 +41,7 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
                 }
 
                 try {
-                    rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+                    reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                         .emit("onPaymentNotification", params)
                 } catch (e: Exception) {
                     Log.w(TAG, "Bridge no listo")
@@ -81,29 +81,29 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
 
     override fun initialize() {
         super.initialize()
-        rc.addActivityEventListener(this)
-        emitter = rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        reactContext.addActivityEventListener(this)
+        emitter = reactContext.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
 
         val filter = IntentFilter("com.vidaplena.app.PAYMENT_NOTIFICATION")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            rc.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+            reactContext.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
         } else {
-            rc.registerReceiver(receiver, filter)
+            reactContext.registerReceiver(receiver, filter)
         }
     }
 
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
-        rc.removeActivityEventListener(this)
+        reactContext.removeActivityEventListener(this)
         emitter = null
-        try { rc.unregisterReceiver(receiver) } catch (e: Exception) {}
+        try { reactContext.unregisterReceiver(receiver) } catch (e: Exception) {}
     }
 
     @ReactMethod
     fun startSpeechRecognition(promise: Promise) {
-        val activity = currentActivity
-        if (activity == null) {
-            promise.reject("ERR", "No activity")
+        val act = reactContext.currentActivity
+        if (act == null) {
+            promise.reject("ERR_NO_ACTIVITY", "No hay una ventana activa")
             return
         }
 
@@ -115,16 +115,15 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         }
 
         try {
-            activity.startActivityForResult(intent, 777)
+            act.startActivityForResult(intent, 7777)
         } catch (e: Exception) {
-            promise.reject("ERR", e.message)
+            promise.reject("ERR_SPEECH", e.message)
             speechPromise = null
         }
     }
 
-    // Compatibilidad con firmas de RN
-    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == 777) {
+    override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == 7777) {
             if (resultCode == Activity.RESULT_OK && data != null) {
                 val results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
                 if (!results.isNullOrEmpty()) {
@@ -139,7 +138,9 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         }
     }
 
-    override fun onNewIntent(intent: Intent?) {}
+    override fun onNewIntent(intent: Intent) {
+        // Implementación requerida por la interfaz
+    }
 
     @ReactMethod
     fun getPendingEvent(promise: Promise) {
@@ -150,15 +151,15 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
 
     @ReactMethod
     fun schedule(id: String, title: String, body: String, timestamp: Double, dataJson: String) {
-        val am = rc.getSystemService(AlarmManager::class.java) ?: return
-        val intent = Intent(rc, AlarmReceiver::class.java).apply {
+        val am = reactContext.getSystemService(AlarmManager::class.java) ?: return
+        val intent = Intent(reactContext, AlarmReceiver::class.java).apply {
             putExtra(AlarmReceiver.EXTRA_ID, id)
             putExtra(AlarmReceiver.EXTRA_TITLE, title)
             putExtra(AlarmReceiver.EXTRA_BODY, body)
             putExtra(AlarmReceiver.EXTRA_DATA, dataJson)
         }
         val pi = PendingIntent.getBroadcast(
-            rc, id.hashCode(), intent,
+            reactContext, id.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         val ms = timestamp.toLong()
@@ -171,10 +172,10 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
 
     @ReactMethod
     fun cancelNotif(id: String) {
-        val am = rc.getSystemService(AlarmManager::class.java) ?: return
-        val intent = Intent(rc, AlarmReceiver::class.java)
+        val am = reactContext.getSystemService(AlarmManager::class.java) ?: return
+        val intent = Intent(reactContext, AlarmReceiver::class.java)
         val pi = PendingIntent.getBroadcast(
-            rc, id.hashCode(), intent,
+            reactContext, id.hashCode(), intent,
             PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
         )
         pi?.let { am.cancel(it) }
@@ -183,11 +184,11 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
     @ReactMethod
     fun fireNow(id: String, title: String, body: String, dataJson: String, promise: Promise) {
         try {
-            AlarmReceiver.ensureChannel(rc)
+            AlarmReceiver.ensureChannel(reactContext)
             val notifIntId = id.hashCode()
 
-            val popupIntent = Intent(rc, PopupActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            val popupIntent = Intent(reactContext, PopupActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra(AlarmReceiver.EXTRA_ID, id)
                 putExtra(AlarmReceiver.EXTRA_TITLE, title)
                 putExtra(AlarmReceiver.EXTRA_BODY, body)
@@ -195,20 +196,20 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
                 putExtra(AlarmReceiver.EXTRA_NOTIF_INT_ID, notifIntId)
             }
             val fullScreenPi = PendingIntent.getActivity(
-                rc, notifIntId + 200, popupIntent,
+                reactContext, notifIntId + 200, popupIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val openPi = PendingIntent.getActivity(
-                rc, notifIntId + 300,
-                Intent(rc, MainActivity::class.java).apply {
+                reactContext, notifIntId + 300,
+                Intent(reactContext, MainActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 },
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            val iconRes = rc.resources.getIdentifier("notification_icon", "drawable", rc.packageName)
+            val iconRes = reactContext.resources.getIdentifier("notification_icon", "drawable", reactContext.packageName)
                 .takeIf { it != 0 } ?: android.R.drawable.ic_dialog_info
 
-            val notif = NotificationCompat.Builder(rc, "fsn_alarmas")
+            val notif = NotificationCompat.Builder(reactContext, "fsn_alarmas")
                 .setSmallIcon(iconRes)
                 .setContentTitle(title)
                 .setContentText(body)
@@ -220,7 +221,7 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
                 .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
                 .build()
 
-            NotificationManagerCompat.from(rc).notify(notifIntId + 400, notif)
+            NotificationManagerCompat.from(reactContext).notify(notifIntId + 400, notif)
             promise.resolve("ok")
         } catch (e: Exception) {
             promise.reject("ERR", e.message ?: "error")
@@ -230,7 +231,7 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
     @ReactMethod
     fun hasNotifPermission(promise: Promise) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val nm = rc.getSystemService(NotificationManager::class.java)
+            val nm = reactContext.getSystemService(NotificationManager::class.java)
             promise.resolve(nm?.areNotificationsEnabled() ?: false)
         } else {
             promise.resolve(true)
@@ -240,7 +241,7 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
     @ReactMethod
     fun canScheduleExact(promise: Promise) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val am = rc.getSystemService(AlarmManager::class.java)
+            val am = reactContext.getSystemService(AlarmManager::class.java)
             promise.resolve(am?.canScheduleExactAlarms() ?: false)
         } else {
             promise.resolve(true)
@@ -250,7 +251,7 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
     @ReactMethod
     fun canUseFullScreenIntent(promise: Promise) {
         if (Build.VERSION.SDK_INT >= 34) {
-            val nm = rc.getSystemService(NotificationManager::class.java)
+            val nm = reactContext.getSystemService(NotificationManager::class.java)
             promise.resolve(nm?.canUseFullScreenIntent() ?: false)
         } else {
             promise.resolve(true)
@@ -262,10 +263,10 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
         try {
             if (Build.VERSION.SDK_INT >= 34) {
                 val intent = Intent("android.settings.MANAGE_APP_USE_FULL_SCREEN_INTENT").apply {
-                    data = Uri.parse("package:${rc.packageName}")
+                    data = Uri.parse("package:${reactContext.packageName}")
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK
                 }
-                rc.startActivity(intent)
+                reactContext.startActivity(intent)
             }
             promise.resolve(null)
         } catch (e: Exception) {
@@ -275,8 +276,8 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
 
     @ReactMethod
     fun isBatteryOptimizationIgnored(promise: Promise) {
-        val pm = rc.getSystemService(PowerManager::class.java)
-        promise.resolve(pm?.isIgnoringBatteryOptimizations(rc.packageName) ?: false)
+        val pm = reactContext.getSystemService(PowerManager::class.java)
+        promise.resolve(pm?.isIgnoringBatteryOptimizations(reactContext.packageName) ?: false)
     }
 
     @ReactMethod fun addListener(eventName: String) {}
