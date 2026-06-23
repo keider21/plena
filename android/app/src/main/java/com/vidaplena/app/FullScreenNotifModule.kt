@@ -101,7 +101,7 @@ class FullScreenNotifModule(private val reactContext: ReactApplicationContext)
 
     @ReactMethod
     fun startSpeechRecognition(promise: Promise) {
-        val act = reactContext.currentActivity
+        val act = currentActivity
         if (act == null) {
             promise.reject("ERR_NO_ACTIVITY", "No hay una ventana activa")
             return
@@ -122,7 +122,8 @@ class FullScreenNotifModule(private val reactContext: ReactApplicationContext)
         }
     }
 
-    override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
+    // Firma exacta requerida por el compilador según el reporte de error
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
         if (requestCode == 7777) {
             if (resultCode == Activity.RESULT_OK && data != null) {
                 val results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
