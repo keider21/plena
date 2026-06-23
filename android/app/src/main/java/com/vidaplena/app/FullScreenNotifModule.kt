@@ -40,12 +40,11 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
                     putString("text", text)
                 }
 
-                // Solo emitimos a JS si el bridge está activo
                 try {
                     rc.getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
                         .emit("onPaymentNotification", params)
                 } catch (e: Exception) {
-                    Log.w(TAG, "Bridge no listo para notificar pago")
+                    Log.w(TAG, "Bridge no listo")
                 }
             }
         }
@@ -104,30 +103,32 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
     fun startSpeechRecognition(promise: Promise) {
         val activity = currentActivity
         if (activity == null) {
-            promise.reject("ERR_NO_ACTIVITY", "No hay una ventana activa")
+            promise.reject("ERR", "No activity")
             return
         }
 
         speechPromise = promise
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toString())
             putExtra(RecognizerIntent.EXTRA_PROMPT, "Te escucho...")
         }
 
         try {
-            activity.startActivityForResult(intent, 7777)
+            activity.startActivityForResult(intent, 777)
         } catch (e: Exception) {
-            promise.reject("ERR_SPEECH", e.message)
+            promise.reject("ERR", e.message)
+            speechPromise = null
         }
     }
 
-    override fun onActivityResult(activity: Activity?, requestCode: Int, resultCode: Int, data: Intent?) {
-        if (requestCode == 7777) {
+    // Compatibilidad con firmas de RN
+    override fun onActivityResult(activity: Activity, requestCode: Int, resultCode: Int, data: Intent?) {
+        if (requestCode == 777) {
             if (resultCode == Activity.RESULT_OK && data != null) {
-                val result = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
-                if (result != null && result.size > 0) {
-                    speechPromise?.resolve(result[0])
+                val results = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                if (!results.isNullOrEmpty()) {
+                    speechPromise?.resolve(results[0])
                 } else {
                     speechPromise?.resolve("")
                 }
@@ -222,7 +223,7 @@ class FullScreenNotifModule(private val rc: ReactApplicationContext)
             NotificationManagerCompat.from(rc).notify(notifIntId + 400, notif)
             promise.resolve("ok")
         } catch (e: Exception) {
-            promise.reject("ERR", e.message ?: "error desconocido")
+            promise.reject("ERR", e.message ?: "error")
         }
     }
 
